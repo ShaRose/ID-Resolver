@@ -25,9 +25,12 @@ Building
 			int newid = IDResolver.GetConflictedBlockID(var1, this);
 			if (newid == -1) {
 				if (blocksList[var1] != null) {
-					throw new IllegalArgumentException("Slot " + var1 + " is already occupied by " + blocksList[var1] + " when adding " + this); // User probably hit cancel.
+					throw new IllegalArgumentException("Slot " + var1 + " is already occupied by " + blocksList[var1] + " when adding " + this);
+					// User probably hit cancel.
 				}
-				throw new IllegalArgumentException("Unable to add block " + this + " in slot " + var1 + ": Error detected. Please check your IDResolver and ModLoader logs for more information."); // Chances are, some other mod tried to kill Minecraft, and since that causes some errors we drop too. This would have been the cause of those Slot X is already occupied by null when adding whatever logs I had.
+				throw new IllegalArgumentException("Unable to add block " + this + " in slot " + var1 + ": Error detected. Please check your IDResolver and ModLoader logs for more information.");
+				// Chances are, some other mod tried to kill Minecraft, and since that causes some errors we drop too.
+				//This would have been the cause of those Slot X is already occupied by null when adding whatever logs I had.
 			}
 			var1 = newid;
 		}
@@ -65,14 +68,18 @@ Building
 
 ```java
 		var1 += 256; // See how we are increasing the value?
-		if (itemsList[var1] != null || IDResolver.HasStoredID(var1, false)) { // This is all pretty much the same as block.
+		if (itemsList[var1] != null || IDResolver.HasStoredID(var1, false)) {
+			// This is all pretty much the same as block.
 			int newid = IDResolver.GetConflictedItemID(var1, this);
 			if (newid == -1)
-				System.out.println("CONFLICT @ " + var1); // We don't bother throwing an error if it returns -1: We just fall back on overwrite. Well, if there's an item there. It doesn't matter to us in any case.
+				System.out.println("CONFLICT @ " + var1);
+				// We don't bother throwing an error if it returns -1: We just fall back on overwrite.
+				// If there's no item, it just operates as usual, so no need to do a check like Block does.
 			else
 				var1 = newid;
 		}
-		this.shiftedIndex = var1; // Finally, after it's all done we replace the shiftedIndex. It's a final field, so we need to keep it for later.
+		this.shiftedIndex = var1;
+		// Finally, after it's all done we set the shiftedIndex because it's a final field.
 		itemsList[var1] = this;
 ```
 
