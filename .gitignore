@@ -7,3 +7,5 @@
 !src/minecraft/net/minecraft/src/IDResolver.java
 #allow mod_IDResolver.java
 !src/minecraft/net/minecraft/src/mod_IDResolver.java
+#allow readme
+!readme.md
