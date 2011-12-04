@@ -37,11 +37,11 @@ Building
 
     - Here's the method we need to fix. (Again note the parameter name might be different!)
 
-	public final int getIconIndex(ItemStack itemstack)
+		public final int getIconIndex(ItemStack itemstack)
 
     - Just replace that with the following.
 
-	public int getIconIndex(ItemStack itemstack)
+		public int getIconIndex(ItemStack itemstack)
 
     - See? A nice small change. Now to edit that constructor. So, let's go to protected Item(int var1). (Again note the parameter name might be different!) Again, this is pretty much just 'replace the code', but you might have to do a bit more depending on the decompiler. Let's get right to it, shall we? Since this is the whole method pretty much, I'll show what FernFlower decompiles, and what the finished version is. You should be able to make any changes you need to do.
 	
