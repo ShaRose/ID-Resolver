@@ -9,3 +9,5 @@
 !src/minecraft/net/minecraft/src/mod_IDResolver.java
 #allow readme
 !readme.md
+#allow test mods
+!src/minecraft/net/minecraft/src/mod_TestMod*.java

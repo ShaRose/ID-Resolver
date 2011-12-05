@@ -12,6 +12,7 @@ import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
@@ -963,6 +964,25 @@ public class IDResolver implements Runnable {
 			IDResolver.knownIDs.remove(key);
 		}
 	}
+	
+	private static String extraInfo = null;
+	
+	private static void AppendExtraInfo(String info)
+	{
+		if(extraInfo == null)
+		{
+			extraInfo = info;
+		}
+		else
+		{
+			extraInfo += "\r\n\r\n" + info;
+		}
+	}
+	
+	public static String GetExtraInfo()
+	{
+		return extraInfo;
+	}
 
 	@SuppressWarnings("unused")
 	private static void ResolveNewID(String key) {
@@ -1117,13 +1137,29 @@ public class IDResolver implements Runnable {
 	@SuppressWarnings("unused")
 	private static void TrimLooseSettingsAuto(ArrayList<String> unused) {
 		Map<String, Boolean> classMap = new HashMap<String, Boolean>();
-
+		ArrayList<Class> loadedMods = new ArrayList<Class>(ModLoader.getLoadedMods().size());
+		for (Iterator iterator = ModLoader.getLoadedMods().iterator(); iterator.hasNext();) {
+			loadedMods.add(iterator.next().getClass());
+		}
+		Boolean isMCP = IDResolver.class.getName().startsWith("net.minecraft.src.");
 		for (String key : unused) {
 			String[] info = IDResolver.GetInfoFromSaveString(key);
 			String classname = info[1];
 			if (!classMap.containsKey(classname)) {
 				try {
-					Class.forName("net.minecraft.src." + classname);
+					Class modClass;
+					if(isMCP)
+					{
+						modClass = Class.forName("net.minecraft.src." + classname);
+					}
+					else
+					{
+						modClass = Class.forName(classname);
+					}
+					if(!loadedMods.contains(modClass))
+					{
+						AppendExtraInfo("Unsure if I should trim IDs from " + classname + ": Class file is still found, but the mod is not loaded into ModLoader! If you wish to trim these IDs, please remove them with the Settings screen.");
+					}
 					classMap.put(classname, true);
 				} catch (ClassNotFoundException e) {
 					classMap.put(classname, false);
@@ -1640,6 +1676,11 @@ public class IDResolver implements Runnable {
 			return;
 		}
 		Minecraft mc = ModLoader.getMinecraftInstance();
+		if(mc == null)
+		{
+			AppendExtraInfo("Warning: When resolving " + longName + " ID resolver detected that the Minecraft object was NULL! Assuming 'special' object handling. Please report this!");
+			return;
+		}
 		if (!mc.running && IDResolver.shutdown) {
 			IDResolver
 					.GetLogger()

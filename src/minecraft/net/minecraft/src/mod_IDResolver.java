@@ -9,6 +9,7 @@ import de.matthiasmann.twl.ScrollPane;
 
 public class mod_IDResolver extends BaseMod {
 	private static Boolean firstTick = true;
+	private static Boolean secondTick = true;
 	private static final String langBlockHookDisabled = "Block hook is disabled or not working! Block conflicts will not be resolved correctly.";
 	private static final String langItemHookDisabled = "Item hook is disabled or not working! Item conflicts will not be resolved correctly.";
 	private static final String langNotInstalledCorrectly = "ID Resolver has detected that it is not installed correctly. ID resolver needs to be installed directly into the minecraft jar, as it needs to overwrite some classes. Modloader's mod folder does not support this as dictated on it's topic, and ID resolver's. Please install correctly, and restart minecraft.";
@@ -102,17 +103,10 @@ public class mod_IDResolver extends BaseMod {
 
 	@Override
 	public boolean OnTickInGUI(float partialTicks, Minecraft mc, GuiScreen scr) {
-		String serverName = "NOTHING";
-		try {
-			serverName = (String)ModLoader.getPrivateValue(Minecraft.class, mc, "serverName");
-		} catch (Throwable e) {
-			serverName = "ERROR";
-		}
-		serverName.charAt(0);
 		if (scr instanceof GuiMainMenu) {
-			if (mod_IDResolver.firstTick) {
+			if (!mod_IDResolver.firstTick && mod_IDResolver.secondTick) {
 				if (mod_IDResolver.showError || !IDResolver.WasBlockInited()
-						|| !IDResolver.WasItemInited()) {
+						|| !IDResolver.WasItemInited() || IDResolver.GetExtraInfo() != null) {
 					String allErrors = null;
 					if (mod_IDResolver.showError) {
 						allErrors = mod_IDResolver.langNotInstalledCorrectly;
@@ -133,6 +127,15 @@ public class mod_IDResolver extends BaseMod {
 							allErrors = mod_IDResolver.langItemHookDisabled;
 						}
 					}
+					if (IDResolver.GetExtraInfo() != null) {
+						if (allErrors != null) {
+							allErrors += "\r\n\r\n"
+									+ IDResolver.GetExtraInfo();
+						} else {
+							allErrors = IDResolver.GetExtraInfo();
+						}
+					}
+					
 					WidgetSimplewindow errorWindow = (WidgetSimplewindow) GuiApiHelper
 							.makeTextDisplayAndGoBack("ID Resolver Error",
 									allErrors, "Continue to main menu", false);
@@ -140,6 +143,10 @@ public class mod_IDResolver extends BaseMod {
 							.getContent())).childDefaultWidth = 350;
 					GuiModScreen.show(errorWindow);
 				}
+				
+				mod_IDResolver.secondTick = false;
+			}
+			if (mod_IDResolver.firstTick) {
 				IDResolver.CheckLooseSettings(true);
 				mod_IDResolver.UpdateUsed();
 				IDResolver.ReLoadModGui();
