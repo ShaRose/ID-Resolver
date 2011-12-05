@@ -3,25 +3,27 @@ package net.minecraft.src;
 public class mod_TestMod3 extends BaseMod {
 
 	@Override
+	public String getVersion() {
+		return "TEST ONLY";
+	}
+
+	@Override
 	public void load() {
 		Item tempitem = null;
-		if(true)
-		{
+		if (true) {
 			tempitem = new Item(30000);
 			tempitem = new Item(30001).setItemName("TestItem1");
 			tempitem = new Item(30002).setItemName("TestItem2");
 			ModLoader.AddName(tempitem, "Test Item 2");
 		}
-		if(true)
-		{
+		if (true) {
 			tempitem = new ItemEgg(30003);
 			tempitem = new ItemEgg(30004).setItemName("TestItem4");
 			tempitem = new ItemEgg(30005).setItemName("TestItem5");
 			ModLoader.AddName(tempitem, "Test Item 5");
 		}
 		Block tempblock = null;
-		if(true)
-		{
+		if (true) {
 			tempblock = new Block(100, Material.cakeMaterial);
 			ModLoader.RegisterBlock(tempblock);
 			tempblock = new Block(101, Material.cakeMaterial)
@@ -32,8 +34,7 @@ public class mod_TestMod3 extends BaseMod {
 			ModLoader.RegisterBlock(tempblock);
 			ModLoader.AddName(tempblock, "Test Block 2");
 		}
-		if(true)
-		{
+		if (true) {
 			tempblock = new BlockLog(103);
 			ModLoader.RegisterBlock(tempblock);
 			tempblock = new BlockLog(104).setBlockName("TestBlock4");
@@ -42,11 +43,6 @@ public class mod_TestMod3 extends BaseMod {
 			ModLoader.RegisterBlock(tempblock);
 			ModLoader.AddName(tempblock, "Test Block 5");
 		}
-	}
-	
-	@Override
-	public String getVersion() {
-		return "TEST ONLY";
 	}
 
 }
