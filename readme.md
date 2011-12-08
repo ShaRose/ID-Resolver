@@ -67,7 +67,8 @@ Building
 - And now, we need to replace that with this.
 
 ```java
-		var1 += 256; // See how we are increasing the value?
+		var1 += Block.blocksList.length;  // See how we are increasing the value using the max number of blocks?
+		                                  // This supports mods like MCExtended and MoreThan256BlockIDs.
 		if (itemsList[var1] != null || IDResolver.HasStoredID(var1, false)) {
 			// This is all pretty much the same as block.
 			int newid = IDResolver.GetConflictedItemID(var1, this);
