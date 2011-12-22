@@ -36,6 +36,7 @@ import de.matthiasmann.twl.Label;
 import de.matthiasmann.twl.ScrollPane;
 import de.matthiasmann.twl.TextArea;
 import de.matthiasmann.twl.Widget;
+import de.matthiasmann.twl.ScrollPane.Fixed;
 import de.matthiasmann.twl.renderer.Font;
 import de.matthiasmann.twl.renderer.Image;
 import de.matthiasmann.twl.renderer.Texture;
@@ -814,7 +815,13 @@ public class IDResolver implements Runnable {
 	@SuppressWarnings("unused")
 	private static void DisplayIDStatus()
 	{
-		GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack("ID Resolver Status Report",GenerateIDStatusReport(),"OK",false));
+		TextArea area = GuiApiHelper.makeTextArea(GenerateIDStatusReport(), false);
+		area.setSize(700, 400);
+		WidgetSimplewindow window = new WidgetSimplewindow(area, "ID Resolver Status Report");
+		ScrollPane pane = ((ScrollPane)window.mainWidget);
+		pane.setFixed(ScrollPane.Fixed.NONE);
+		window.backButton.setText("OK");
+		GuiModScreen.show(window);
 	}
 
 	public static void ReLoadModGui() {
@@ -969,7 +976,7 @@ public class IDResolver implements Runnable {
 			loggedItems++;
 			String blockName = block.getBlockName();
 			String transName = StatCollector.translateToLocal(blockName + ".name");
-			reportIDs.append(String.format("%-7s\t-\t%-30s\t-\t%-30s\t-\t%s", i,blockName,transName,block.getClass().getName())).append(linebreak);
+			reportIDs.append(String.format("%-8s - %-31s - %-31s - %s", i,blockName,transName,block.getClass().getName())).append(linebreak);
 		}
 		
 		for (int i = Block.blocksList.length; i < Item.itemsList.length; i++) {
@@ -979,12 +986,12 @@ public class IDResolver implements Runnable {
 			loggedItems++;
 			String itemName = item.getItemName();
 			String transName = StatCollector.translateToLocal(itemName + ".name");
-			reportIDs.append(String.format("%-7s\t-\t%-30s\t-\t%-30s\t-\t%s", i,itemName,transName,item.getClass().getName())).append(linebreak);
+			reportIDs.append(String.format("%-8s - %-31s - %-31s - %s", i,itemName,transName,item.getClass().getName())).append(linebreak);
 		}
 		report.append("Quick stats:").append(linebreak);
 		report.append(String.format("Block ID Status: %d/%d used. %d available.", loggedBlocks,Block.blocksList.length,Block.blocksList.length-loggedBlocks)).append(linebreak);
 		report.append(String.format("Item ID Status: %d/%d used. %d available.", loggedItems,Item.itemsList.length,Item.itemsList.length-loggedItems)).append(linebreak).append(linebreak);
-		report.append("ID     \t-\tName                          \t-\tTooltip                       \t-\tClass").append(linebreak);
+		report.append("ID      - Name                           - Tooltip                        - Class").append(linebreak);
 		report.append(reportIDs.toString());
 		return report.toString();
 	}
