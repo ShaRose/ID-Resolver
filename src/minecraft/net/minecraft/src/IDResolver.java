@@ -13,7 +13,6 @@ import java.lang.reflect.Modifier;
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -36,7 +35,6 @@ import de.matthiasmann.twl.Label;
 import de.matthiasmann.twl.ScrollPane;
 import de.matthiasmann.twl.TextArea;
 import de.matthiasmann.twl.Widget;
-import de.matthiasmann.twl.ScrollPane.Fixed;
 import de.matthiasmann.twl.renderer.Font;
 import de.matthiasmann.twl.renderer.Image;
 import de.matthiasmann.twl.renderer.Texture;
@@ -239,6 +237,79 @@ public class IDResolver implements Runnable {
 	public static void DisableLooseSettingsCheck() {
 		IDResolver.checkForLooseSettings.set(false);
 		IDResolver.UpdateTickSettings();
+	}
+
+	@SuppressWarnings("unused")
+	private static void DisplayIDStatus() {
+		IDResolver.GetLogger().log(Level.INFO,
+				"IDResolver - User pressed 'DisplayIDStatus' button.");
+		TextArea area = GuiApiHelper.makeTextArea(
+				IDResolver.GenerateIDStatusReport(), false);
+		area.setSize(700, 400);
+		WidgetSimplewindow window = new WidgetSimplewindow(area,
+				"ID Resolver Status Report");
+		ScrollPane pane = ((ScrollPane) window.mainWidget);
+		pane.setFixed(ScrollPane.Fixed.NONE);
+		window.backButton.setText("OK");
+		GuiModScreen.show(window);
+	}
+
+	private static String GenerateIDStatusReport() {
+		StringBuilder report = new StringBuilder();
+		String linebreak = System.getProperty("line.separator");
+		report.append("ID Resolver ID Status report").append(linebreak);
+		report.append("Generated on " + new Date().toString())
+				.append(linebreak).append(linebreak);
+
+		int loggedBlocks = 1;
+		int loggedItems = 1;
+		StringBuilder reportIDs = new StringBuilder();
+		for (int i = 1; i < Block.blocksList.length; i++) {
+			Block block = Block.blocksList[i];
+			if (block == null) {
+				continue;
+			}
+			loggedBlocks++;
+			loggedItems++;
+			String blockName = block.getBlockName();
+			String transName = StatCollector.translateToLocal(blockName
+					+ ".name");
+			reportIDs.append(
+					String.format("%-8s - %-31s - %-31s - %s", i, blockName,
+							transName, block.getClass().getName())).append(
+					linebreak);
+		}
+
+		for (int i = Block.blocksList.length; i < Item.itemsList.length; i++) {
+			Item item = Item.itemsList[i];
+			if (item == null) {
+				continue;
+			}
+			loggedItems++;
+			String itemName = item.getItemName();
+			String transName = StatCollector.translateToLocal(itemName
+					+ ".name");
+			reportIDs.append(
+					String.format("%-8s - %-31s - %-31s - %s", i, itemName,
+							transName, item.getClass().getName())).append(
+					linebreak);
+		}
+		report.append("Quick stats:").append(linebreak);
+		report.append(
+				String.format("Block ID Status: %d/%d used. %d available.",
+						loggedBlocks, Block.blocksList.length,
+						Block.blocksList.length - loggedBlocks)).append(
+				linebreak);
+		report.append(
+				String.format("Item ID Status: %d/%d used. %d available.",
+						loggedItems, Item.itemsList.length,
+						Item.itemsList.length - loggedItems)).append(linebreak)
+				.append(linebreak);
+		report.append(
+				"ID      - Name                           - Tooltip                        - Class")
+				.append(linebreak);
+		report.append(reportIDs.toString());
+		return report.toString();
 	}
 
 	public static int GetConflictedBlockID(int RequestedID, Block newBlock) {
@@ -791,38 +862,6 @@ public class IDResolver implements Runnable {
 			IDResolver.initialized = false;
 		}
 	}
-	
-	@SuppressWarnings("unused")
-	private static void SaveIDStatusToFile()
-	{
-		File savePath = new File(Minecraft.getMinecraftDir(), "ID Status.txt");
-		try {
-			FileOutputStream output = new FileOutputStream(savePath);
-			output.write(GenerateIDStatusReport().getBytes());
-			output.flush();
-			output.close();
-			GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack("ID Resolver","Saved ID status report to " + savePath.getAbsolutePath(),"OK",false));
-		} catch (Throwable e) {
-			StringWriter sw = new StringWriter();
-		    PrintWriter pw = new PrintWriter(sw);
-		    e.printStackTrace(pw);
-			String trace = sw.toString();
-			pw.close();
-			GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack("ID Resolver","Error saving to " + savePath.getAbsolutePath() + ", exception was:\r\n\r\n" + trace ,"OK",false));
-		}
-	}
-	
-	@SuppressWarnings("unused")
-	private static void DisplayIDStatus()
-	{
-		TextArea area = GuiApiHelper.makeTextArea(GenerateIDStatusReport(), false);
-		area.setSize(700, 400);
-		WidgetSimplewindow window = new WidgetSimplewindow(area, "ID Resolver Status Report");
-		ScrollPane pane = ((ScrollPane)window.mainWidget);
-		pane.setFixed(ScrollPane.Fixed.NONE);
-		window.backButton.setText("OK");
-		GuiModScreen.show(window);
-	}
 
 	public static void ReLoadModGui() {
 		IDResolver.ReloadIDs();
@@ -947,53 +986,15 @@ public class IDResolver implements Runnable {
 				IDResolver.class, true));
 		widget.add(GuiApiHelper.makeButton("Check for Loose IDs",
 				"CheckLooseIDs", IDResolver.class, true));
-		
+
 		widget.add(GuiApiHelper.makeButton("Generate ID Status Report",
 				"SaveIDStatusToFile", IDResolver.class, true));
-		
+
 		widget.add(GuiApiHelper.makeButton("Display ID Status Report",
 				"DisplayIDStatus", IDResolver.class, true));
-		
+
 		widget.add(GuiApiHelper.makeButton("Reload Options",
 				"ReLoadModGuiAndRefresh", IDResolver.class, true));
-	}
-	
-	private static String GenerateIDStatusReport()
-	{
-		StringBuilder report = new StringBuilder();
-		String linebreak = System.getProperty("line.separator");
-		report.append("ID Resolver ID Status report").append(linebreak);
-		report.append("Generated on " + new Date().toString()).append(linebreak).append(linebreak);
-		
-		int loggedBlocks = 1;
-		int loggedItems = 1;
-		StringBuilder reportIDs = new StringBuilder();
-		for (int i = 1; i < Block.blocksList.length; i++) {
-			Block block = Block.blocksList[i];
-			if(block == null)
-				continue;
-			loggedBlocks++;
-			loggedItems++;
-			String blockName = block.getBlockName();
-			String transName = StatCollector.translateToLocal(blockName + ".name");
-			reportIDs.append(String.format("%-8s - %-31s - %-31s - %s", i,blockName,transName,block.getClass().getName())).append(linebreak);
-		}
-		
-		for (int i = Block.blocksList.length; i < Item.itemsList.length; i++) {
-			Item item = Item.itemsList[i];
-			if(item == null)
-				continue;
-			loggedItems++;
-			String itemName = item.getItemName();
-			String transName = StatCollector.translateToLocal(itemName + ".name");
-			reportIDs.append(String.format("%-8s - %-31s - %-31s - %s", i,itemName,transName,item.getClass().getName())).append(linebreak);
-		}
-		report.append("Quick stats:").append(linebreak);
-		report.append(String.format("Block ID Status: %d/%d used. %d available.", loggedBlocks,Block.blocksList.length,Block.blocksList.length-loggedBlocks)).append(linebreak);
-		report.append(String.format("Item ID Status: %d/%d used. %d available.", loggedItems,Item.itemsList.length,Item.itemsList.length-loggedItems)).append(linebreak).append(linebreak);
-		report.append("ID      - Name                           - Tooltip                        - Class").append(linebreak);
-		report.append(reportIDs.toString());
-		return report.toString();
 	}
 
 	@SuppressWarnings("unused")
@@ -1076,29 +1077,60 @@ public class IDResolver implements Runnable {
 		resolver.RunConflictMenu();
 	}
 
+	@SuppressWarnings("unused")
+	private static void SaveIDStatusToFile() {
+		IDResolver.GetLogger().log(Level.INFO,
+				"IDResolver - User pressed 'SaveIDStatusToFile' button.");
+		File savePath = new File(Minecraft.getMinecraftDir(), "ID Status.txt");
+		try {
+			FileOutputStream output = new FileOutputStream(savePath);
+			output.write(IDResolver.GenerateIDStatusReport().getBytes());
+			output.flush();
+			output.close();
+			GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack(
+					"ID Resolver",
+					"Saved ID status report to " + savePath.getAbsolutePath(),
+					"OK", false));
+		} catch (Throwable e) {
+			IDResolver.GetLogger().log(Level.INFO,
+					"IDResolver - Exception when saving ID Status to file.", e);
+			StringWriter sw = new StringWriter();
+			PrintWriter pw = new PrintWriter(sw);
+			e.printStackTrace(pw);
+			String trace = sw.toString();
+			pw.close();
+			GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack(
+					"ID Resolver",
+					"Error saving to " + savePath.getAbsolutePath()
+							+ ", exception was:\r\n\r\n" + trace, "OK", false));
+		}
+	}
+
 	private static void SetupOverrides() {
 		int pubfinalmod = Modifier.FINAL + Modifier.PUBLIC;
-				try {
-					for (Field field : Block.class.getFields()) {
-						if (field.getModifiers() == pubfinalmod && (field.getType() == int.class)) {
-							IDResolver.blockidfield = field;
-							break;
-						}
-					}
-				} catch (Throwable e3) {
-					IDResolver.overridesenabled = false;
+		try {
+			for (Field field : Block.class.getFields()) {
+				if ((field.getModifiers() == pubfinalmod)
+						&& (field.getType() == int.class)) {
+					IDResolver.blockidfield = field;
+					break;
 				}
-		
-				try {
-					for (Field field : Item.class.getFields()) {
-						if (field.getModifiers() == pubfinalmod && (field.getType() == int.class)) {
-							IDResolver.itemidfield = field;
-							break;
-						}
-					}
-				} catch (Throwable e3) {
-					IDResolver.overridesenabled = false;
+			}
+		} catch (Throwable e3) {
+			IDResolver.overridesenabled = false;
+		}
+
+		try {
+			for (Field field : Item.class.getFields()) {
+				if ((field.getModifiers() == pubfinalmod)
+						&& (field.getType() == int.class)) {
+					IDResolver.itemidfield = field;
+					break;
 				}
+			}
+		} catch (Throwable e3) {
+			IDResolver.overridesenabled = false;
+		}
 		if (IDResolver.overridesenabled) {
 			IDResolver.blockidfield.setAccessible(true);
 			IDResolver.itemidfield.setAccessible(true);
