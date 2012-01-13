@@ -39,9 +39,9 @@ import de.matthiasmann.twl.Widget;
 import de.matthiasmann.twl.renderer.Font;
 import de.matthiasmann.twl.renderer.Image;
 import de.matthiasmann.twl.renderer.Texture;
-import de.matthiasmann.twl.renderer.lwjgl.RenderScale;
 import de.matthiasmann.twl.renderer.lwjgl.LWJGLTexture.Filter;
 import de.matthiasmann.twl.renderer.lwjgl.LWJGLTexture.Format;
+import de.matthiasmann.twl.renderer.lwjgl.RenderScale;
 import de.matthiasmann.twl.textarea.SimpleTextAreaModel;
 
 public class IDResolver implements Runnable {
@@ -1955,8 +1955,8 @@ public class IDResolver implements Runnable {
 			widgetscreen.layout();
 			while (running) {
 
-				if ((mc.displayWidth != mc.mcCanvas.getWidth()
-						|| mc.displayHeight != mc.mcCanvas.getHeight())) {
+				if (((mc.displayWidth != mc.mcCanvas.getWidth()) || (mc.displayHeight != mc.mcCanvas
+						.getHeight()))) {
 					mc.displayWidth = mc.mcCanvas.getWidth();
 					mc.displayHeight = mc.mcCanvas.getHeight();
 					widgetscreen.layout();
@@ -2312,14 +2312,24 @@ public class IDResolver implements Runnable {
 					"Automatically assign an ID in Reverse", "AutoAssignRev",
 					this, true));
 			if (!disableAutoAll) {
-				subscreenIDSetter.add(GuiApiHelper.makeButton(
-						"Automatically assign an ID to All from this mod",
-						"AutoAssignAll", this, true));
-				subscreenIDSetter
-						.add(GuiApiHelper
-								.makeButton(
-										"Automatically assign an ID to All from this mod in Reverse",
-										"AutoAssignAllRev", this, true));
+				Button assignallbuttons = GuiApiHelper.makeButton(
+						"Automatically assign an ID to All\r\nfrom this mod",
+						"AutoAssignAll", this, true);
+				subscreenIDSetter.add(assignallbuttons);
+
+				((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions
+						.put(assignallbuttons, 30);
+
+				assignallbuttons = GuiApiHelper
+						.makeButton(
+								"Automatically assign an ID to All from\r\nthis mod in Reverse",
+								"AutoAssignAllRev", this, true);
+
+				subscreenIDSetter.add(assignallbuttons);
+
+				((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions
+						.put(assignallbuttons, 30);
+
 				if (IDResolver.GetModPriority(IDResolver
 						.GetInfoFromSaveString(longName)[1]) < Integer.MAX_VALUE) {
 					subscreenIDSetter.add(GuiApiHelper.makeButton(
