@@ -28,6 +28,7 @@ import java.util.logging.SimpleFormatter;
 import net.minecraft.client.Minecraft;
 
 import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GL11;
 
 import de.matthiasmann.twl.Button;
 import de.matthiasmann.twl.Color;
@@ -38,6 +39,7 @@ import de.matthiasmann.twl.Widget;
 import de.matthiasmann.twl.renderer.Font;
 import de.matthiasmann.twl.renderer.Image;
 import de.matthiasmann.twl.renderer.Texture;
+import de.matthiasmann.twl.renderer.lwjgl.RenderScale;
 import de.matthiasmann.twl.renderer.lwjgl.LWJGLTexture.Filter;
 import de.matthiasmann.twl.renderer.lwjgl.LWJGLTexture.Format;
 import de.matthiasmann.twl.textarea.SimpleTextAreaModel;
@@ -1952,14 +1954,17 @@ public class IDResolver implements Runnable {
 			}
 			widgetscreen.layout();
 			while (running) {
-				/*
-				 * if(mc.displayWidth != mc.mcCanvas.getWidth() ||
-				 * mc.displayHeight != mc.mcCanvas.getHeight()) {
-				 * mc.displayWidth = mc.mcCanvas.getWidth(); mc.displayHeight =
-				 * mc.mcCanvas.getHeight(); ((MinecraftImpl)mc).mcFrame.pack();
-				 * widgetscreen.renderer.syncViewportSize();
-				 * widgetscreen.layout(); }
-				 */
+
+				if ((mc.displayWidth != mc.mcCanvas.getWidth()
+						|| mc.displayHeight != mc.mcCanvas.getHeight())) {
+					mc.displayWidth = mc.mcCanvas.getWidth();
+					mc.displayHeight = mc.mcCanvas.getHeight();
+					widgetscreen.layout();
+					RenderScale.scale = widgetscreen.screenSize.scaleFactor;
+					GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
+					widgetscreen.renderer.syncViewportSize();
+				}
+
 				widgetscreen.gui.update();
 				if ((fnt != null) && IDResolver.ShowTick(false)) {
 					widgetscreen.renderer.startRendering();
