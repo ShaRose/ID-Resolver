@@ -5,7 +5,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import net.minecraft.client.Minecraft;
-import de.matthiasmann.twl.ScrollPane;
 
 public class mod_IDResolver extends BaseMod {
 	private static Boolean firstTick = true;
@@ -81,7 +80,7 @@ public class mod_IDResolver extends BaseMod {
 
 	@Override
 	public String getVersion() {
-		return "1.0.0 - Update 2";
+		return "1.1 - Update 0";
 	}
 
 	@Override
@@ -139,8 +138,7 @@ public class mod_IDResolver extends BaseMod {
 					WidgetSimplewindow errorWindow = (WidgetSimplewindow) GuiApiHelper
 							.makeTextDisplayAndGoBack("ID Resolver Error",
 									allErrors, "Continue to main menu", false);
-					((WidgetSinglecolumn) (((ScrollPane) errorWindow.mainWidget)
-							.getContent())).childDefaultWidth = 350;
+					((WidgetSinglecolumn) errorWindow.mainWidget).childDefaultWidth = 350;
 					GuiModScreen.show(errorWindow);
 				}
 

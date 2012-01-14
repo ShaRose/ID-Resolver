@@ -318,6 +318,7 @@ public class IDResolver implements Runnable {
 							"\r\nBlock Slipperiness: %s",
 							Block.blocksList[i].slipperiness));
 				}
+
 			}
 			WidgetSingleRow row = new WidgetSingleRow(200, 32);
 			row.add(new WidgetItem2DRender(i), 32, 32);
@@ -1435,6 +1436,7 @@ public class IDResolver implements Runnable {
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO, "Could not save properties", e);
 		}
+		GuiModScreen.back();
 	}
 
 	private boolean disableAutoAll = false;

@@ -24,12 +24,12 @@ public class mod_TestMod5 extends BaseMod {
 		}
 		Block tempblock = null;
 		if (true) {
-			tempblock = new Block(100, Material.cakeMaterial);
+			tempblock = new Block(100, Material.cake);
 			ModLoader.RegisterBlock(tempblock);
-			tempblock = new Block(101, Material.cakeMaterial)
+			tempblock = new Block(101, Material.cake)
 					.setBlockName("TestBlock1");
 			ModLoader.RegisterBlock(tempblock);
-			tempblock = new Block(102, Material.cakeMaterial)
+			tempblock = new Block(102, Material.cake)
 					.setBlockName("TestBlock2");
 			ModLoader.RegisterBlock(tempblock);
 			ModLoader.AddName(tempblock, "Test Block 2");
