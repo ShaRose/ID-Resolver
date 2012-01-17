@@ -161,8 +161,7 @@ public class IDResolver implements Runnable {
 							true);
 				}
 				WidgetSimplewindow window = choiceBuilder.genWidget(true);
-				((WidgetSinglecolumn) ((ScrollPane) window.mainWidget)
-						.getContent()).childDefaultWidth = 250;
+				((WidgetSinglecolumn) window.mainWidget).childDefaultWidth = 250;
 				GuiModScreen.show(window);
 			} else {
 				if (!automatic) {
