@@ -11,37 +11,37 @@ public class mod_TestMod4 extends BaseMod {
 	public void load() {
 		Item tempitem = null;
 		if (true) {
-			tempitem = new Item(30000);
-			tempitem = new Item(30001).setItemName("TestItem1");
-			tempitem = new Item(30002).setItemName("TestItem2");
-			ModLoader.AddName(tempitem, "Test Item 2");
+			tempitem = new Item(20000);
+			tempitem = new Item(20001).setItemName("TestItem1");
+			tempitem = new Item(20002).setItemName("TestItem2");
+			ModLoader.addName(tempitem, "Test Item 2");
 		}
 		if (true) {
-			tempitem = new ItemEgg(30003);
-			tempitem = new ItemEgg(30004).setItemName("TestItem4");
-			tempitem = new ItemEgg(30005).setItemName("TestItem5");
-			ModLoader.AddName(tempitem, "Test Item 5");
+			tempitem = new ItemEgg(20003);
+			tempitem = new ItemEgg(20004).setItemName("TestItem4");
+			tempitem = new ItemEgg(20005).setItemName("TestItem5");
+			ModLoader.addName(tempitem, "Test Item 5");
 		}
 		Block tempblock = null;
 		if (true) {
-			tempblock = new Block(100, Material.cake);
-			ModLoader.RegisterBlock(tempblock);
-			tempblock = new Block(101, Material.cake)
+			tempblock = new Block(200, Material.cake);
+			ModLoader.registerBlock(tempblock);
+			tempblock = new Block(201, Material.cake)
 					.setBlockName("TestBlock1");
-			ModLoader.RegisterBlock(tempblock);
-			tempblock = new Block(102, Material.cake)
+			ModLoader.registerBlock(tempblock);
+			tempblock = new Block(202, Material.cake)
 					.setBlockName("TestBlock2");
-			ModLoader.RegisterBlock(tempblock);
-			ModLoader.AddName(tempblock, "Test Block 2");
+			ModLoader.registerBlock(tempblock);
+			ModLoader.addName(tempblock, "Test Block 2");
 		}
 		if (true) {
-			tempblock = new BlockLog(103);
-			ModLoader.RegisterBlock(tempblock);
-			tempblock = new BlockLog(104).setBlockName("TestBlock4");
-			ModLoader.RegisterBlock(tempblock);
-			tempblock = new BlockLog(105).setBlockName("TestBlock5");
-			ModLoader.RegisterBlock(tempblock);
-			ModLoader.AddName(tempblock, "Test Block 5");
+			tempblock = new BlockLog(203);
+			ModLoader.registerBlock(tempblock);
+			tempblock = new BlockLog(204).setBlockName("TestBlock4");
+			ModLoader.registerBlock(tempblock);
+			tempblock = new BlockLog(205).setBlockName("TestBlock5");
+			ModLoader.registerBlock(tempblock);
+			ModLoader.addName(tempblock, "Test Block 5");
 		}
 	}
 

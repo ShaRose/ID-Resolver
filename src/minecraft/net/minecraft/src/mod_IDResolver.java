@@ -28,6 +28,20 @@ public class mod_IDResolver extends BaseMod {
 							"IDResolver - Unable to get itemSpritesLeft field from Modloader.",
 							e);
 		}
+		
+		Logger log = ModLoader.getLogger();
+		Logger idlog = IDResolver.GetLogger();
+		String temp = "ID Resolver - "
+				+ (IDResolver.WasBlockInited() ? "Block hook is enabled and working."
+						: mod_IDResolver.langBlockHookDisabled);
+		log.info(temp);
+		idlog.info(temp);
+		temp = "ID Resolver - "
+				+ (IDResolver.WasItemInited() ? "Item hook is enabled and working."
+						: mod_IDResolver.langItemHookDisabled);
+		log.info(temp);
+		idlog.info(temp);
+		
 		if (mod_IDResolver.class.getProtectionDomain().getCodeSource()
 				.getLocation().toString().indexOf(".minecraft/mods") != -1) {
 			mod_IDResolver.showError = true;
@@ -80,28 +94,22 @@ public class mod_IDResolver extends BaseMod {
 
 	@Override
 	public String getVersion() {
-		return "1.1 - Update 0";
+		return "1.2.3 - Update 1";
 	}
+	
+	@Override
+	public String getPriorities()
+    {
+        return "after:*";
+    }
 
 	@Override
 	public void load() {
-		Logger log = ModLoader.getLogger();
-		Logger idlog = IDResolver.GetLogger();
-		String temp = "ID Resolver - "
-				+ (IDResolver.WasBlockInited() ? "Block hook is enabled and working."
-						: mod_IDResolver.langBlockHookDisabled);
-		log.info(temp);
-		idlog.info(temp);
-		temp = "ID Resolver - "
-				+ (IDResolver.WasItemInited() ? "Item hook is enabled and working."
-						: mod_IDResolver.langItemHookDisabled);
-		log.info(temp);
-		idlog.info(temp);
-		ModLoader.SetInGUIHook(this, true, false);
+		ModLoader.setInGUIHook(this, true, false);
 	}
 
 	@Override
-	public boolean OnTickInGUI(float partialTicks, Minecraft mc, GuiScreen scr) {
+	public boolean onTickInGUI(float partialTicks, Minecraft mc, GuiScreen scr) {
 		if (scr instanceof GuiMainMenu) {
 			if (!mod_IDResolver.firstTick && mod_IDResolver.secondTick) {
 				if (mod_IDResolver.showError || !IDResolver.WasBlockInited()
