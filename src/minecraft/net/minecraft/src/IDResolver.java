@@ -1,5 +1,6 @@
 package net.minecraft.src;
 
+import java.awt.Desktop;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -28,6 +29,7 @@ import java.util.logging.SimpleFormatter;
 
 import net.minecraft.client.Minecraft;
 
+import org.lwjgl.Sys;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
@@ -96,12 +98,10 @@ public class IDResolver implements Runnable {
 
 	private static void AddModGui() {
 		IDResolver.modscreen = new ModSettingScreen("ID Resolver");
-		WidgetSinglecolumn widgetsinglecolumn = new WidgetSinglecolumn(
-				new Widget[0]);
-		widgetsinglecolumn.add(GuiApiHelper.makeButton("Reload Entries",
+		IDResolver.modscreen.setSingleColumn(true);
+		IDResolver.modscreen.widgetColumn.childDefaultWidth = 300;
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Reload Entries",
 				"ReLoadModGui", IDResolver.class, true));
-		IDResolver.modscreen.theWidget = new WidgetSimplewindow(
-				widgetsinglecolumn, "ID Resolver Saved IDs");
 		IDResolver.ReloadIDs();
 	}
 
@@ -243,59 +243,6 @@ public class IDResolver implements Runnable {
 		IDResolver.checkForLooseSettings.set(false);
 		IDResolver.UpdateTickSettings();
 	}
-	
-	@SuppressWarnings("unused")
-	private static void TickIDSubItem(WidgetItem2DRender renderer, TextArea textArea,Label label)
-	{
-		ItemStack stack = renderer.getRenderStack();
-		int damage = stack.getItemDamage();
-		damage++;
-		if(damage > 15)
-		{
-			damage = 0;
-		}
-		stack.setItemDamage(damage);
-		
-		Item item = stack.getItem();
-		String stackName = IDResolver.GetItemNameForStack(stack);
-		StringBuilder tooltipText = new StringBuilder(String.format(
-				"Slot %-4s : Metadata %s: %s",
-				stack.itemID,damage,
-				StringTranslate.getInstance().translateNamedKey(
-						stackName)));
-
-		tooltipText.append(String.format("\r\n\r\nInternal name: %s",
-				stackName));
-		tooltipText.append(String.format("\r\nSubitems: %s",
-				item.hasSubtypes));
-		tooltipText.append(String.format("\r\nMax stack: %s",
-				item.getItemStackLimit()));
-		tooltipText.append(String.format(
-				"\r\nDamage versus entities: %s",
-				item.getDamageVsEntity(null)));
-		tooltipText.append(String.format("\r\nEnchantability: %s",
-				item.getItemEnchantability()));
-		tooltipText.append(String.format("\r\nMax Damage: %s",
-				item.getMaxDamage()));
-		if (stack.itemID < Block.blocksList.length) {
-			tooltipText.append(String.format("\r\nBlock Hardness: %s",
-					Block.blocksList[stack.itemID].getHardness()));
-			tooltipText.append(String.format(
-					"\r\nBlock Slipperiness: %s",
-					Block.blocksList[stack.itemID].slipperiness));
-		}
-		
-		if(idToMod != null)
-		{
-			if(idToMod.containsKey(stack.itemID))
-			{
-				tooltipText.append(String.format("\r\nMod: %s",
-						idToMod.get(stack.itemID)));
-			}
-		}
-		
-		GuiApiHelper.setTextAreaText(textArea, tooltipText.toString());
-	}
 
 	@SuppressWarnings("unused")
 	private static void DisplayIDStatus() {
@@ -336,8 +283,6 @@ public class IDResolver implements Runnable {
 			}
 		}
 		
-		boolean showMod = idToMod != null;
-		
 		ModAction mergedActions = null;
 		
 		WidgetSinglecolumn area = new WidgetSinglecolumn();
@@ -345,30 +290,35 @@ public class IDResolver implements Runnable {
 		area.childDefaultWidth = 250;
 		area.childDefaultHeight = 40;
 		int freeSlotStart = -1;
-		boolean isCheckingBlocks = true;
-		
+		String[] freeName = new String[]{"block", "block or item","item"};
+		String[] freeNames = new String[]{"blocks", "blocks or items","items"};
 		for (int i = 1; i < Item.itemsList.length; i++) {
-			if (isCheckingBlocks && (i >= Block.blocksList.length)) {
-				isCheckingBlocks = false;
-			}
+			
+			
 			boolean addTick = false;
-			Label label;
-			StringBuilder tooltipText;
+			Label label = null;
+			StringBuilder tooltipText = null;
 			ItemStack stack = new ItemStack(i, 1, 0);
-			if ((isCheckingBlocks && (Block.blocksList[i] == null))
-					|| (stack == null) || (stack.getItem() == null)) {
+			int position = GetPosition(i);
+			int exists = GetExistance(position,i);
+			
+			if (exists == 0) {
 				if (freeSlotStart == -1) {
 					freeSlotStart = i;
 				}
 				int next = i + 1;
-				boolean generateRangeItem = false;
-				if ((isCheckingBlocks && ((next == Block.blocksList.length) || (Block.blocksList[next] != null)))
-						|| (!isCheckingBlocks && ((next == Item.itemsList.length) || (Item.itemsList[next] != null)))) {
-					generateRangeItem = true;
-				}
-				if (!generateRangeItem) {
+				if(next != Item.itemsList.length)
+				{
+				int nextPosition = GetPosition(next);
+				int nextExists = GetExistance(nextPosition,next);
+				
+				boolean generateRangeItem = (nextExists != 0);
+				
+				if (!generateRangeItem && (nextPosition == position)) {
 					continue;
 				}
+				}
+				
 				if (freeSlotStart != i) {
 					label = new Label(String.format(
 							"Slots %-4s - %-4s: Open slots", freeSlotStart, i));
@@ -376,17 +326,19 @@ public class IDResolver implements Runnable {
 							String.format(
 									"Open Slots\r\n\r\nThis slot range of %s is open for any %s to use.",
 									i - freeSlotStart,
-									(isCheckingBlocks ? "blocks" : "items")));
+									freeNames[position]));
 				} else {
 					label = new Label(String.format("Slot %-4s: Open slot", i));
 					tooltipText = new StringBuilder(
 							String.format(
 									"Open Slot\r\n\r\nThis slot is open for any %s to use.",
-									(isCheckingBlocks ? "block" : "item")));
+									freeName[position]));
 				}
 				freeSlotStart = -1;
-			} else {
-				String stackName = IDResolver.GetItemNameForStack(stack);
+			}
+			else
+			{
+				String stackName = GetItemNameForStack(stack);
 				tooltipText = new StringBuilder(String.format(
 						"Slot %-4s: %s",
 						i,
@@ -397,34 +349,10 @@ public class IDResolver implements Runnable {
 				tooltipText.append(String.format("\r\n\r\nInternal name: %s",
 						stackName));
 				addTick = Item.itemsList[i].hasSubtypes;
-				tooltipText.append(String.format("\r\nSubitems: %s",
-						Item.itemsList[i].hasSubtypes));
-				tooltipText.append(String.format("\r\nMax stack: %s",
-						Item.itemsList[i].getItemStackLimit()));
-				tooltipText.append(String.format(
-						"\r\nDamage versus entities: %s",
-						Item.itemsList[i].getDamageVsEntity(null)));
-				tooltipText.append(String.format("\r\nEnchantability: %s",
-						Item.itemsList[i].getItemEnchantability()));
-				tooltipText.append(String.format("\r\nMax Damage: %s",
-						Item.itemsList[i].getMaxDamage()));
-				if (isCheckingBlocks) {
-					tooltipText.append(String.format("\r\nBlock Hardness: %s",
-							Block.blocksList[i].getHardness()));
-					tooltipText.append(String.format(
-							"\r\nBlock Slipperiness: %s",
-							Block.blocksList[i].slipperiness));
-				}
 				
-				if(showMod)
-				{
-					if(idToMod.containsKey(i))
-					{
-						tooltipText.append(String.format("\r\nMod: %s",
-								idToMod.get(i)));
-					}
-				}
+				BuildItemInfo(tooltipText,i,exists == 1);
 			}
+			
 			WidgetSingleRow row = new WidgetSingleRow(200, 32);
 			WidgetItem2DRender renderer = new WidgetItem2DRender(i);
 			row.add(renderer, 32, 32);
@@ -458,60 +386,294 @@ public class IDResolver implements Runnable {
 		window.backButton.setText("OK");
 		GuiModScreen.show(window);
 	}
+	
+	private static int GetPosition(int i)
+	{
+		int position = 0;
+		if(i >= Block.blocksList.length)
+		{
+			position = 2;
+		}
+		else
+		{
+			if(i >= Item.shovelSteel.shiftedIndex)
+			{
+				position = 1;
+			}
+		}
+		return position;
+	}
+	
+	private static int GetExistance(int position,int i)
+	{
+		ItemStack stack = new ItemStack(i, 1, 0);
+		int exists = 0;
+		switch(position)
+		{
+		case 0:
+		{
+			if((Block.blocksList[i] != null) && (stack.getItem() != null))
+			{
+				exists = 1;
+			}
+			break;
+		}
+		case 1:
+		{
+			if((Block.blocksList[i] != null) && (stack.getItem() != null))
+			{
+				exists = 1;
+			}
+			else
+			{
+				if(Item.itemsList[i] != null)
+				{
+					exists = 2;
+				}
+			}
+			break;
+		}
+		case 2:
+		{
+			if(Item.itemsList[i] != null)
+			{
+				exists = 2;
+			}
+			break;
+		}
+		}
+		return exists;
+	}
+	
+	private static String[] armorTypes = new String[]{"Helmet","Chestplate","Leggings","Boots"};
+	
+	private static void BuildItemInfo(StringBuilder builder,int index,boolean isBlock)
+	{
+		Item item = Item.itemsList[index];
+		
+		builder.append(String.format("\r\nSubitems: %s",
+				item.hasSubtypes));
+		
+		builder.append(String.format("\r\nIs Block: %s",
+				isBlock));
+		
+		if(!isBlock)
+		{
+			
+			builder.append(String.format("\r\nClassname: %s",
+					item.getClass().getName()));
+		}
+		else
+		{
+			builder.append(String.format("\r\nClassname: %s",
+					Block.blocksList[index].getClass().getName()));
+		}
+		
+		builder.append(String.format("\r\nMax stack: %s",
+				item.getItemStackLimit()));
+		builder.append(String.format(
+				"\r\nDamage versus entities: %s",
+				item.getDamageVsEntity(null)));
+		builder.append(String.format("\r\nEnchantability: %s",
+				item.getItemEnchantability()));
+		builder.append(String.format("\r\nMax Damage: %s",
+				item.getMaxDamage()));
+		if(item instanceof ItemArmor)
+		{
+			ItemArmor armor = ((ItemArmor)item);
+			builder.append(String.format("\r\nMax Damage Reduction: %s",
+					armor.damageReduceAmount));
+			builder.append(String.format("\r\nArmor Slot: %s",
+					IDResolver.armorTypes[armor.armorType]));
+		}
+		
+		if(item instanceof ItemFood)
+		{
+			ItemFood food = ((ItemFood)item);
+			builder.append(String.format("\r\nHeal Amount: %s",
+					food.getHealAmount()));
+			builder.append(String.format("\r\nHunger Modifier: %s",
+					food.getSaturationModifier()));
+			builder.append(String.format("\r\nWolves enjoy: %s",
+					food.isWolfsFavoriteMeat()));
+		}
+		
+		if (isBlock) {
+			Block block = Block.blocksList[index];
+			builder.append(String.format("\r\nBlock Hardness: %s",
+					block.getHardness()));
+			builder.append(String.format(
+					"\r\nBlock Slipperiness: %s",
+					block.slipperiness));
+			builder.append(String.format(
+					"\r\nBlock Light Level: %s",
+					Block.lightValue[index]));
+			builder.append(String.format(
+					"\r\nBlock Opacity: %s",
+					Block.lightOpacity[index]));
+		}
+		
+		if(idToMod != null)
+		{
+			if(idToMod.containsKey(index))
+			{
+				builder.append(String.format("\r\nMod: %s",
+						idToMod.get(index)));
+			}
+		}
+	}
+	
+	@SuppressWarnings("unused")
+	private static void TickIDSubItem(WidgetItem2DRender renderer, TextArea textArea,Label label)
+	{
+		ItemStack stack = renderer.getRenderStack();
+		int damage = stack.getItemDamage();
+		damage++;
+		if(damage > 15)
+		{
+			damage = 0;
+		}
+		stack.setItemDamage(damage);
+		
+		Item item = stack.getItem();
+		String stackName = GetItemNameForStack(stack);
+		StringBuilder tooltipText = new StringBuilder(String.format(
+				"Slot %-4s : Metadata %s: %s",
+				stack.itemID,damage,
+				StringTranslate.getInstance().translateNamedKey(
+						stackName)));
 
-	private static String GenerateIDStatusReport() {
+		tooltipText.append(String.format("\r\n\r\nInternal name: %s",
+				stackName));
+		
+		BuildItemInfo(tooltipText,stack.itemID,GetExistance(GetPosition(stack.itemID),stack.itemID) == 1);
+		
+		GuiApiHelper.setTextAreaText(textArea, tooltipText.toString());
+	}
+	
+	private static String GenerateIDStatusReport(int showFree) {
 		StringBuilder report = new StringBuilder();
 		String linebreak = System.getProperty("line.separator");
 		report.append("ID Resolver ID Status report").append(linebreak);
 		report.append("Generated on " + new Date().toString())
 				.append(linebreak).append(linebreak);
 
-		int loggedBlocks = 1;
-		int loggedItems = 1;
+		boolean checkClean = Block.blocksList.length != Item.shovelSteel.shiftedIndex;
+		int totalRegisteredBlocks = 1;
+		int totalUncleanBlockSlots = 0;
+		int totalRegisteredItems = 0;
+		
 		StringBuilder reportIDs = new StringBuilder();
-		for (int i = 1; i < Block.blocksList.length; i++) {
-			Block block = Block.blocksList[i];
-			if (block == null) {
+		
+		String[] names = new String[]{"Free ","Block","Item "};
+		
+		String[] freeName = new String[]{"block", "block or item","item"};
+		String[] freeNames = new String[]{"blocks", "blocks or items","items"};
+		
+		int freeSlotStart = -1;
+		
+		for (int i = 1; i < Item.itemsList.length; i++) {
+			String itemName = null;
+			String transName = null;
+			String className = null;
+			
+			int position = IDResolver.GetPosition(i);
+			int exists = IDResolver.GetExistance(position,i);
+			
+			switch(exists)
+			{
+			case 0:
+			{
+				if(showFree == 0)
+				{
+					continue;
+				}
+				if (freeSlotStart == -1) {
+					freeSlotStart = i;
+				}
+				
+				int next = i + 1;
+				if(next != Item.itemsList.length)
+				{
+					if(showFree == 2)
+					{
+				int nextPosition = GetPosition(next);
+				int nextExists = GetExistance(nextPosition,next);
+				
+				boolean generateRangeItem = (nextExists != 0);
+				
+				if (!generateRangeItem && (nextPosition == position)) {
+					continue;
+				}
+					}
+				}
+				
+				if (freeSlotStart != i) {
+					reportIDs.append(
+							String.format("%s %-8s - %-8s - This slot range of %s is open for any %s to use.", names[exists], freeSlotStart, i, i - freeSlotStart, freeNames[position])).append(
+							linebreak);
+				} else {
+					
+					reportIDs.append(
+							String.format("%s %-8s - This slot is open for any %s to use.", names[exists], i, freeName[position])).append(
+							linebreak);
+				}
+				freeSlotStart = -1;
 				continue;
 			}
-			loggedBlocks++;
-			loggedItems++;
-			String blockName = block.getBlockName();
-			String transName = StatCollector.translateToLocal(blockName
-					+ ".name");
-			reportIDs.append(
-					String.format("%-8s - %-31s - %-31s - %s", i, blockName,
-							transName, block.getClass().getName())).append(
-					linebreak);
-		}
-
-		for (int i = Block.blocksList.length; i < Item.itemsList.length; i++) {
-			Item item = Item.itemsList[i];
-			if (item == null) {
-				continue;
+			case 1:
+			{
+				Block block = Block.blocksList[i];
+				totalRegisteredBlocks++;
+				itemName = block.getBlockName();
+				transName = StatCollector.translateToLocal(itemName + ".name");
+				className = block.getClass().getName();
+				break;
 			}
-			loggedItems++;
-			String itemName = item.getItemName();
-			String transName = StatCollector.translateToLocal(itemName
-					+ ".name");
+			case 2:
+			{
+				if(checkClean && i < Block.blocksList.length)
+				{
+					totalUncleanBlockSlots++;
+				}
+				
+				Item item = Item.itemsList[i];
+				totalRegisteredItems++;
+				itemName = item.getItemName();
+				transName = StatCollector.translateToLocal(itemName
+						+ ".name");
+				className = item.getClass().getName();
+				break;
+			}
+			}
+			
 			reportIDs.append(
-					String.format("%-8s - %-31s - %-31s - %s", i, itemName,
-							transName, item.getClass().getName())).append(
+					String.format("%s %-8s - %-31s - %-31s - %s", names[exists], i, itemName,
+							transName, className)).append(
 					linebreak);
 		}
 		report.append("Quick stats:").append(linebreak);
 		report.append(
 				String.format("Block ID Status: %d/%d used. %d available.",
-						loggedBlocks, Block.blocksList.length,
-						Block.blocksList.length - loggedBlocks)).append(
-				linebreak);
+						totalRegisteredBlocks, Block.blocksList.length,
+						(Block.blocksList.length - totalUncleanBlockSlots) - totalRegisteredBlocks));
+		if(checkClean)
+		{
+			report.append("(Unclean Block slots: ");
+			report.append(totalUncleanBlockSlots);
+			report.append(")" + linebreak);
+		}
+		else
+		{
+			report.append(linebreak);
+		}
 		report.append(
 				String.format("Item ID Status: %d/%d used. %d available.",
-						loggedItems, Item.itemsList.length,
-						Item.itemsList.length - loggedItems)).append(linebreak)
+						totalRegisteredItems, Item.itemsList.length,
+						(Item.itemsList.length - Item.shovelSteel.shiftedIndex) - totalRegisteredItems)).append(linebreak)
 				.append(linebreak);
 		report.append(
-				"ID      - Name                           - Tooltip                        - Class")
+				"Type  ID      - Name                           - Tooltip                        - Class")
 				.append(linebreak);
 		report.append(reportIDs.toString());
 		return report.toString();
@@ -924,6 +1086,7 @@ public class IDResolver implements Runnable {
 		}
 		Block.blocksList[oldid] = oldblock;
 		Item.itemsList[oldid] = oldblockitem;
+		idToMod = null;
 	}
 
 	private static void OverrideItemID(int newid, int oldid) {
@@ -940,6 +1103,7 @@ public class IDResolver implements Runnable {
 			}
 		}
 		Item.itemsList[oldid] = olditem;
+		idToMod = null;
 	}
 
 	private static String RaiseModPriority(String modname) {
@@ -1118,8 +1282,8 @@ public class IDResolver implements Runnable {
 
 	public static void ReLoadModGui() {
 		IDResolver.ReloadIDs();
-		Widget widget = ((WidgetSimplewindow) IDResolver.modscreen.theWidget).mainWidget;
-		widget.removeAllChildren();
+		
+		IDResolver.modscreen.widgetColumn.removeAllChildren();
 		Map<String, Vector<String>> IDmap = new HashMap<String, Vector<String>>();
 		for (Map.Entry<Object, Object> entry : IDResolver.knownIDs.entrySet()) {
 			String key = (String) entry.getKey();
@@ -1164,7 +1328,6 @@ public class IDResolver implements Runnable {
 				String name = null;
 				ItemStack stack = null;
 				Boolean isBlock = IDResolver.IsBlockType(IDEntry);
-				//IDEntry = IDResolver.TrimType(IDEntry, isBlock);
 				if (isBlock) {
 					if (Block.blocksList[x] != null) {
 						stack = new ItemStack(Block.blocksList[x]);
@@ -1214,7 +1377,7 @@ public class IDResolver implements Runnable {
 			}
 			IDResolver.windows[id] = new WidgetSimplewindow(window,
 					"Config IDs for " + entry.getKey());
-			widget.add(GuiApiHelper.makeButton(
+			IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton(
 					"View IDs for " + entry.getKey(), "ShowMenu",
 					IDResolver.class, true, new Class[] { Integer.class }, id));
 			id++;
@@ -1225,31 +1388,38 @@ public class IDResolver implements Runnable {
 		WidgetBoolean TickMWidget = new WidgetBoolean(IDResolver.showTickMM,
 				"Show ID info on Main Menu");
 		TickMWidget.button.addCallback(callback);
-		widget.add(TickMWidget);
+		IDResolver.modscreen.widgetColumn.add(TickMWidget);
 		TickMWidget = new WidgetBoolean(IDResolver.showTickRS,
 				"Show ID info on Resolve Screen");
 		TickMWidget.button.addCallback(callback);
-		widget.add(TickMWidget);
+		IDResolver.modscreen.widgetColumn.add(TickMWidget);
 		TickMWidget = new WidgetBoolean(IDResolver.checkForLooseSettings,
 				"Check for Loose settings");
 		TickMWidget.button.addCallback(callback);
-		widget.add(TickMWidget);
+		IDResolver.modscreen.widgetColumn.add(TickMWidget);
 		TickMWidget = new WidgetBoolean(IDResolver.showOnlyConf,
 				"Only Show Conflicts");
 		TickMWidget.button.addCallback(callback);
-		widget.add(TickMWidget);
-		widget.add(GuiApiHelper.makeButton("Wipe ALL Saved IDs", "ClearAllIDs",
+		IDResolver.modscreen.widgetColumn.add(TickMWidget);
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Wipe ALL Saved IDs", "ClearAllIDs",
 				IDResolver.class, true));
-		widget.add(GuiApiHelper.makeButton("Check for Loose IDs",
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Check for Loose IDs",
 				"CheckLooseIDs", IDResolver.class, true));
+		
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Generate ID Status Report",
+				"SaveIDStatusToFile", IDResolver.class, true,new Class[]{Integer.class},0));
+		
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Generate ID Status Report with Expanded Free IDs",
+				"SaveIDStatusToFile", IDResolver.class, true,new Class[]{Integer.class},1));
+		
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Generate ID Status Report with Collapsed Free IDs",
+				"SaveIDStatusToFile", IDResolver.class, true,new Class[]{Integer.class},2));
+		
 
-		widget.add(GuiApiHelper.makeButton("Generate ID Status Report",
-				"SaveIDStatusToFile", IDResolver.class, true));
-
-		widget.add(GuiApiHelper.makeButton("Display ID Status Report",
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Display ID Status Report",
 				"DisplayIDStatus", IDResolver.class, true));
 
-		widget.add(GuiApiHelper.makeButton("Reload Options",
+		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Reload Options",
 				"ReLoadModGuiAndRefresh", IDResolver.class, true));
 	}
 
@@ -1333,21 +1503,43 @@ public class IDResolver implements Runnable {
 		resolver.SetupGui(Integer.parseInt(IDResolver.knownIDs.getProperty(key)));
 		resolver.RunConflictMenu();
 	}
-
+	
 	@SuppressWarnings("unused")
-	private static void SaveIDStatusToFile() {
+	private static void LinkCallback(String url)
+	{
 		IDResolver.GetLogger().log(Level.INFO,
-				"IDResolver - User pressed 'SaveIDStatusToFile' button.");
-		File savePath = new File(Minecraft.getMinecraftDir(), "ID Status.txt");
+				"IDResolver - User pressed link. URL is: " + url);
+		File file = new File(url);
+		try {
+			Desktop.getDesktop().open(file);
+		}
+		catch (Throwable e) {
+			e.printStackTrace();
+			Sys.openURL(file.toURI().toString());
+		}
+	}
+	
+	@SuppressWarnings("unused")
+	private static void SaveIDStatusToFile(Integer showFree) {
+		IDResolver.GetLogger().log(Level.INFO,
+				"IDResolver - User pressed 'SaveIDStatusToFile' button. Mode: " + showFree.toString());
+		File savePath = new File(new File(Minecraft.getMinecraftDir(), "ID Status.txt").getAbsolutePath().replace("\\.\\", "\\"));
 		try {
 			FileOutputStream output = new FileOutputStream(savePath);
-			output.write(IDResolver.GenerateIDStatusReport().getBytes());
+			output.write(IDResolver.GenerateIDStatusReport(showFree).getBytes());
 			output.flush();
 			output.close();
-			GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack(
-					"ID Resolver",
-					"Saved ID status report to " + savePath.getAbsolutePath(),
-					"OK", false));
+			
+			WidgetSinglecolumn widget = new WidgetSinglecolumn(new Widget[0]);
+			TextArea area = GuiApiHelper.makeTextArea(String.format("Saved ID status report to <a href=\"%1$s\">%1$s</a>", savePath), true);
+			area.addCallback(new ModAction(IDResolver.class,"LinkCallback","Link Clicked Callback",String.class));
+			widget.add(area);
+			widget.overrideHeight = false;
+			WidgetSimplewindow window = new WidgetSimplewindow(widget, "ID Resolver");
+			window.backButton.setText("OK");
+			
+			
+			GuiModScreen.show(window);
 		} catch (Throwable e) {
 			IDResolver.GetLogger().log(Level.INFO,
 					"IDResolver - Exception when saving ID Status to file.", e);
@@ -1362,7 +1554,7 @@ public class IDResolver implements Runnable {
 							+ ", exception was:\r\n\r\n" + trace, "OK", false));
 		}
 	}
-
+	
 	private static void SetupOverrides() {
 		int pubfinalmod = Modifier.FINAL + Modifier.PUBLIC;
 		try {
@@ -1933,7 +2125,7 @@ public class IDResolver implements Runnable {
 	}
 
 	private void PriorityConflict(String newobject, String oldobject,
-			Boolean isBlock) {
+			Boolean isTypeBlock) {
 		oldsubscreenIDSetter = subscreenIDSetter;
 		subscreenIDSetter = new WidgetSinglecolumn(new Widget[0]);
 		{
@@ -1942,7 +2134,7 @@ public class IDResolver implements Runnable {
 			model.setText(
 					String.format(
 							"There is a mod priority conflict for a %s between two mods. Both has the same priority set. Please select which should take priority.",
-							IDResolver.GetTypeName(isBlock)), false);
+							IDResolver.GetTypeName(isTypeBlock)), false);
 			TextArea textarea = new TextArea(model);
 			subscreenIDSetter.add(textarea);
 			((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions

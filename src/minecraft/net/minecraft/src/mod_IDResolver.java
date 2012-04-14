@@ -94,7 +94,7 @@ public class mod_IDResolver extends BaseMod {
 
 	@Override
 	public String getVersion() {
-		return "1.2.3 - Update 1";
+		return "1.2.5 - Update 0";
 	}
 	
 	@Override
