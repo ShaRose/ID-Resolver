@@ -37,6 +37,8 @@ import de.matthiasmann.twl.Button;
 import de.matthiasmann.twl.Color;
 import de.matthiasmann.twl.Label;
 import de.matthiasmann.twl.ScrollPane;
+import de.matthiasmann.twl.Scrollbar;
+import de.matthiasmann.twl.Scrollbar.Orientation;
 import de.matthiasmann.twl.TextArea;
 import de.matthiasmann.twl.Widget;
 import de.matthiasmann.twl.renderer.Font;
@@ -1877,6 +1879,7 @@ public class IDResolver {
 
 	private boolean running = false;
 
+	private Scrollbar scrollBar;
 	private SettingInt settingIntNewID;
 
 	private boolean specialItem = false;
@@ -2240,63 +2243,6 @@ public class IDResolver {
 		updateUI();
 	}
 
-	private void updateUI() {
-		int ID = settingIntNewID.get();
-		String Name = null;
-		try {
-			if (isBlock) {
-				Block selectedBlock = Block.blocksList[ID];
-				if (selectedBlock != null) {
-					Name = getBlockName(selectedBlock);
-				}
-			}
-			if (Name == null) {
-				Item selectedItem = Item.itemsList[ID];
-				if (selectedItem != null) {
-					Name = getItemName(selectedItem);
-				}
-			}
-			if (Name == null) {
-				if (isBlock && IDResolver.intHasStoredID(ID, true)) {
-					String[] info = IDResolver.getInfoFromSaveString(IDResolver
-							.getStoredIDName(ID, true));
-					Name = "ID " + info[0] + " from " + info[1];
-				} else {
-					if (IDResolver.intHasStoredID(ID, false)) {
-						String[] info = IDResolver
-								.getInfoFromSaveString(IDResolver
-										.getStoredIDName(ID, false));
-						Name = "ID " + info[0] + " from " + info[1];
-					}
-				}
-			}
-
-		} catch (Throwable e) {
-			Name = "ERROR";
-		}
-		boolean originalmenu = (isMenu && (ID == settingIntNewID.defaultValue));
-		if (!disableOverride) {
-			resolveScreenOverride.setEnabled(IDResolver.intHasStoredID(ID,
-					isBlock) && IDResolver.overridesEnabled && !originalmenu);
-		}
-		if (!originalmenu) {
-			if (Name == null) {
-				GuiApiHelper.setTextAreaText(resolveScreenLabel, getTypeName()
-						+ " ID " + Integer.toString(ID) + " is available!");
-				resolveScreenContinue.setEnabled(true);
-			} else {
-				GuiApiHelper.setTextAreaText(resolveScreenLabel, getTypeName()
-						+ " ID " + Integer.toString(ID) + " is used by " + Name
-						+ ".");
-				resolveScreenContinue.setEnabled(false);
-			}
-		} else {
-			GuiApiHelper.setTextAreaText(resolveScreenLabel,
-					"This is the currently saved ID.");
-			resolveScreenContinue.setEnabled(true);
-		}
-	}
-
 	private void runConflict() throws Exception {
 		if (specialItem) {
 			return;
@@ -2416,11 +2362,10 @@ public class IDResolver {
 				Display.update();
 				Thread.yield();
 				if (!mc.running) {
-					if(wasRunning)
-					{
+					if (wasRunning) {
 						IDResolver.shutdown = true;
 					}
-					
+
 					if (!IDResolver.shutdown && IDResolver.attemptedRecover) {
 						IDResolver.shutdown = true;
 					}
@@ -2714,8 +2659,17 @@ public class IDResolver {
 			settingIntNewID.defaultValue = RequestedID;
 			WidgetInt intdisplay = new WidgetInt(settingIntNewID, "New ID");
 			subscreenIDSetter.add(intdisplay);
-			intdisplay.slider.getModel().addCallback(new ModAction(this,"updateUI"));
+			intdisplay.slider.getModel().addCallback(
+					new ModAction(this, "updateUI"));
 			intdisplay.slider.setCanEdit(true);
+
+			scrollBar = new Scrollbar(Orientation.HORIZONTAL);
+			subscreenIDSetter.add(scrollBar);
+			scrollBar.setMinMaxValue(settingIntNewID.minimumValue,
+					settingIntNewID.maximumValue);
+			scrollBar.setValue(settingIntNewID.get());
+			scrollBar.addCallback(new ModAction(this, "updateUISB"));
+
 			model = new SimpleTextAreaModel();
 			model.setText("", false);
 			resolveScreenLabel = new TextArea(model);
@@ -2779,6 +2733,69 @@ public class IDResolver {
 		}
 		subscreenIDSetter = new ScrollPane(subscreenIDSetter);
 		((ScrollPane) subscreenIDSetter).setFixed(ScrollPane.Fixed.HORIZONTAL);
+	}
+
+	private void updateUI() {
+		int ID = settingIntNewID.get();
+		scrollBar.setValue(ID, false);
+		String Name = null;
+		try {
+			if (isBlock) {
+				Block selectedBlock = Block.blocksList[ID];
+				if (selectedBlock != null) {
+					Name = getBlockName(selectedBlock);
+				}
+			}
+			if (Name == null) {
+				Item selectedItem = Item.itemsList[ID];
+				if (selectedItem != null) {
+					Name = getItemName(selectedItem);
+				}
+			}
+			if (Name == null) {
+				if (isBlock && IDResolver.intHasStoredID(ID, true)) {
+					String[] info = IDResolver.getInfoFromSaveString(IDResolver
+							.getStoredIDName(ID, true));
+					Name = "ID " + info[0] + " from " + info[1];
+				} else {
+					if (IDResolver.intHasStoredID(ID, false)) {
+						String[] info = IDResolver
+								.getInfoFromSaveString(IDResolver
+										.getStoredIDName(ID, false));
+						Name = "ID " + info[0] + " from " + info[1];
+					}
+				}
+			}
+
+		} catch (Throwable e) {
+			Name = "ERROR";
+		}
+		boolean originalmenu = (isMenu && (ID == settingIntNewID.defaultValue));
+		if (!disableOverride) {
+			resolveScreenOverride.setEnabled(IDResolver.intHasStoredID(ID,
+					isBlock) && IDResolver.overridesEnabled && !originalmenu);
+		}
+		if (!originalmenu) {
+			if (Name == null) {
+				GuiApiHelper.setTextAreaText(resolveScreenLabel, getTypeName()
+						+ " ID " + Integer.toString(ID) + " is available!");
+				resolveScreenContinue.setEnabled(true);
+			} else {
+				GuiApiHelper.setTextAreaText(resolveScreenLabel, getTypeName()
+						+ " ID " + Integer.toString(ID) + " is used by " + Name
+						+ ".");
+				resolveScreenContinue.setEnabled(false);
+			}
+		} else {
+			GuiApiHelper.setTextAreaText(resolveScreenLabel,
+					"This is the currently saved ID.");
+			resolveScreenContinue.setEnabled(true);
+		}
+	}
+
+	@SuppressWarnings("unused")
+	private void updateUISB() {
+		settingIntNewID.set(scrollBar.getValue());
 	}
 
 	@SuppressWarnings("unused")
