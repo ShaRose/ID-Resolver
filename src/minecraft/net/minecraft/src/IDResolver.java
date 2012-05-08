@@ -47,33 +47,36 @@ import de.matthiasmann.twl.renderer.lwjgl.LWJGLTexture.Format;
 import de.matthiasmann.twl.renderer.lwjgl.RenderScale;
 import de.matthiasmann.twl.textarea.SimpleTextAreaModel;
 
-public class IDResolver implements Runnable {
-	private static String autoAssignMod;
+public class IDResolver {
+	private static String[] armorTypes = new String[] { "Helmet", "Chestplate",
+			"Leggings", "Boots" };
 
-	private static Field blockidfield;
+	private static Boolean attemptedRecover = false;
+	private static String autoAssignMod;
+	private static Field blockIdField;
 	private static SettingBoolean checkForLooseSettings = null;
 	private static String extraInfo = null;
 	private static File idPath;
+	private static Hashtable<Integer, String> idToMod = null;
 	private static boolean initialized;
-	private static Field itemidfield;
+	private static Field itemIdField;
 	private static Properties knownIDs;
 	private static final String langLooseSettingsFound = "ID resolver has found some loose settings that aren't being used. Would you like to view a menu to remove them?";
-	private static final String langMinecraftShuttingDown = "Minecraft is shutting down. If you did not try and exit the game, there is likely an exception such as not enough sprite indexes in your Modloader.txt, or another mod is attempting to shut down minecraft. Please post in the ID resolver thread with your Modloader.txt, IDResolver.txt, and describe what was happening.";
+	private static final String langMinecraftShuttingDown = "Minecraft is shutting down, but ID Resolver did not attempt to do so. It is probably due to another exception, such as not enough sprite indexes. In some cases mods will attempt to shut down Minecraft due to possible ID conflicts, and don't check for ID resolver, so ID resolver will attempt to recover Minecraft. If this does not work, please check your ModLoader.txt and ID Resolver.txt for more information.";
 	private static HashSet<String> loadedEntries = new HashSet<String>();
 	private static Logger logger;
 	private static Properties modPriorities;
-	private static ModSettingScreen modscreen;
-	private static boolean overridesenabled;
+	private static ModSettingScreen modScreen;
+	private static boolean overridesEnabled;
 	private static File priorityPath;
 	private static String settingsComment;
 	private static SettingBoolean showOnlyConf = null;
 	private static SettingBoolean showTickMM = null;
 	private static SettingBoolean showTickRS = null;
 	private static Boolean shutdown = false;
+	private static boolean[] vanillaIDs = new boolean[35840];
 	private static Boolean wasBlockInited = false;
 	private static Boolean wasItemInited = false;
-	private static Hashtable<Integer, String> idToMod = null;
-
 	private static WidgetSimplewindow[] windows;
 
 	static {
@@ -89,23 +92,23 @@ public class IDResolver implements Runnable {
 					e);
 		}
 		IDResolver.settingsComment = "IDResolver Known / Set IDs file. Please do not edit manually.";
-		IDResolver.overridesenabled = true;
+		IDResolver.overridesEnabled = true;
 		IDResolver.autoAssignMod = null;
 		IDResolver.initialized = false;
-		IDResolver.SetupOverrides();
-		IDResolver.AddModGui();
+		IDResolver.setupOverrides();
+		IDResolver.addModGui();
 	}
 
-	private static void AddModGui() {
-		IDResolver.modscreen = new ModSettingScreen("ID Resolver");
-		IDResolver.modscreen.setSingleColumn(true);
-		IDResolver.modscreen.widgetColumn.childDefaultWidth = 300;
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Reload Entries",
-				"ReLoadModGui", IDResolver.class, true));
-		IDResolver.ReloadIDs();
+	private static void addModGui() {
+		IDResolver.modScreen = new ModSettingScreen("ID Resolver");
+		IDResolver.modScreen.setSingleColumn(true);
+		IDResolver.modScreen.widgetColumn.childDefaultWidth = 300;
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Reload Entries", "reLoadModGui", IDResolver.class, true));
+		IDResolver.reloadIDs();
 	}
 
-	private static void AppendExtraInfo(String info) {
+	private static void appendExtraInfo(String info) {
 		if (IDResolver.extraInfo == null) {
 			IDResolver.extraInfo = info;
 		} else {
@@ -113,12 +116,74 @@ public class IDResolver implements Runnable {
 		}
 	}
 
-	private static boolean CheckForLooseSettings() {
+	private static void buildItemInfo(StringBuilder builder, int index,
+			boolean isBlock) {
+		Item item = Item.itemsList[index];
+
+		builder.append(String.format("\r\nSubitems: %s", item.hasSubtypes));
+
+		builder.append(String.format("\r\nIs Block: %s", isBlock));
+
+		if (!isBlock) {
+
+			builder.append(String.format("\r\nClassname: %s", item.getClass()
+					.getName()));
+		} else {
+			builder.append(String.format("\r\nClassname: %s",
+					Block.blocksList[index].getClass().getName()));
+		}
+
+		builder.append(String.format("\r\nMax stack: %s",
+				item.getItemStackLimit()));
+		builder.append(String.format("\r\nDamage versus entities: %s",
+				item.getDamageVsEntity(null)));
+		builder.append(String.format("\r\nEnchantability: %s",
+				item.getItemEnchantability()));
+		builder.append(String.format("\r\nMax Damage: %s", item.getMaxDamage()));
+		if (item instanceof ItemArmor) {
+			ItemArmor armor = ((ItemArmor) item);
+			builder.append(String.format("\r\nMax Damage Reduction: %s",
+					armor.damageReduceAmount));
+			builder.append(String.format("\r\nArmor Slot: %s",
+					IDResolver.armorTypes[armor.armorType]));
+		}
+
+		if (item instanceof ItemFood) {
+			ItemFood food = ((ItemFood) item);
+			builder.append(String.format("\r\nHeal Amount: %s",
+					food.getHealAmount()));
+			builder.append(String.format("\r\nHunger Modifier: %s",
+					food.getSaturationModifier()));
+			builder.append(String.format("\r\nWolves enjoy: %s",
+					food.isWolfsFavoriteMeat()));
+		}
+
+		if (isBlock) {
+			Block block = Block.blocksList[index];
+			builder.append(String.format("\r\nBlock Hardness: %s",
+					block.getHardness()));
+			builder.append(String.format("\r\nBlock Slipperiness: %s",
+					block.slipperiness));
+			builder.append(String.format("\r\nBlock Light Level: %s",
+					Block.lightValue[index]));
+			builder.append(String.format("\r\nBlock Opacity: %s",
+					Block.lightOpacity[index]));
+		}
+
+		if (IDResolver.idToMod != null) {
+			if (IDResolver.idToMod.containsKey(index)) {
+				builder.append(String.format("\r\nMod: %s",
+						IDResolver.idToMod.get(index)));
+			}
+		}
+	}
+
+	private static boolean checkForLooseSettings() {
 		if (!IDResolver.modPriorities.containsKey("CheckForLooseSettings")) {
 			IDResolver.modPriorities.setProperty("CheckForLooseSettings",
 					"true");
 			try {
-				IDResolver.StoreProperties();
+				IDResolver.storeProperties();
 			} catch (Throwable e) {
 				IDResolver.logger
 						.log(Level.INFO,
@@ -132,34 +197,34 @@ public class IDResolver implements Runnable {
 	}
 
 	@SuppressWarnings("unused")
-	private static void CheckLooseIDs() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void checkLooseIDs() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'CheckLooseIDs' button.");
-		IDResolver.CheckLooseSettings(false);
+		IDResolver.checkLooseSettings(false);
 	}
 
-	public static void CheckLooseSettings(boolean automatic) {
-		if (IDResolver.CheckForLooseSettings() || !automatic) {
-			ArrayList<String> unusedIDs = IDResolver.CheckUnusedIDs();
+	public static void checkLooseSettings(boolean automatic) {
+		if (IDResolver.checkForLooseSettings() || !automatic) {
+			ArrayList<String> unusedIDs = IDResolver.checkUnusedIDs();
 			if (unusedIDs.size() != 0) {
-				Logger idlog = IDResolver.GetLogger();
+				Logger idlog = IDResolver.getLogger();
 				idlog.info("Detected " + unusedIDs.size()
 						+ " unused (Loose) IDs.");
 				GuiApiHelper choiceBuilder = GuiApiHelper
 						.createChoiceMenu(IDResolver.langLooseSettingsFound);
-				choiceBuilder.addButton("Go to trim menu", "TrimLooseSettings",
+				choiceBuilder.addButton("Go to trim menu", "trimLooseSettings",
 						IDResolver.class, new Class[] { (ArrayList.class) },
 						false, unusedIDs);
 				choiceBuilder.addButton("Trim all loose settings",
-						"TrimLooseSettingsAll", IDResolver.class,
+						"trimLooseSettingsAll", IDResolver.class,
 						new Class[] { (ArrayList.class) }, true, unusedIDs);
 				choiceBuilder.addButton(
 						"Trim all loose settings for unloaded mods",
-						"TrimLooseSettingsAuto", IDResolver.class,
+						"trimLooseSettingsAuto", IDResolver.class,
 						new Class[] { (ArrayList.class) }, true, unusedIDs);
 				if (automatic) {
 					choiceBuilder.addButton("Ignore and don't ask again",
-							"IgnoreLooseDetectionAndDisable", IDResolver.class,
+							"ignoreLooseDetectionAndDisable", IDResolver.class,
 							true);
 				}
 				WidgetSimplewindow window = choiceBuilder.genWidget(true);
@@ -176,12 +241,13 @@ public class IDResolver implements Runnable {
 		}
 	}
 
-	public static ArrayList<String> CheckUnusedIDs() {
+	public static ArrayList<String> checkUnusedIDs() {
 		ArrayList<String> unused = new ArrayList<String>();
 		for (Entry<Object, Object> entry : IDResolver.knownIDs.entrySet()) {
 			String key = (String) entry.getKey();
-			if("SAVEVERSION".equals(key))
+			if ("SAVEVERSION".equals(key)) {
 				continue;
+			}
 			if (!IDResolver.loadedEntries.contains(key)) {
 				unused.add(key);
 			}
@@ -190,18 +256,18 @@ public class IDResolver implements Runnable {
 	}
 
 	@SuppressWarnings("unused")
-	private static void ClearAllIDs() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void clearAllIDs() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'ClearAllIDs' button.");
 		IDResolver.knownIDs.clear();
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO, "Could not save properties", e);
 		}
 	}
 
-	private static int ConflictHelper(IDResolver resolver) {
+	private static int conflictHelper(IDResolver resolver) {
 		if (!IDResolver.initialized) {
 			IDResolver.logger
 					.log(Level.INFO,
@@ -209,15 +275,15 @@ public class IDResolver implements Runnable {
 			throw new RuntimeException(
 					"ID Resolver did not initalize! Please go to the thread and post ID resolver.txt for help resolving this error, which should basically never happen.");
 		}
-		if (resolver.HasStored()) {
-			int id = resolver.GetStored();
+		if (resolver.hasStored()) {
+			int id = resolver.getStored();
 			IDResolver.logger.log(Level.INFO, "IDResolver - Loading saved ID "
-					+ Integer.toString(id) + " for " + resolver.GetTypeName()
-					+ " " + resolver.GetName() + ".");
+					+ Integer.toString(id) + " for " + resolver.getTypeName()
+					+ " " + resolver.getName() + ".");
 			return id;
 		}
 		try {
-			resolver.RunConflict();
+			resolver.runConflict();
 			if (resolver.settingIntNewID == null) {
 				IDResolver.logger
 						.log(Level.INFO,
@@ -228,105 +294,119 @@ public class IDResolver implements Runnable {
 				IDResolver.logger.log(Level.INFO,
 						"IDResolver - User selected new ID "
 								+ resolver.settingIntNewID.get().toString()
-								+ " for " + resolver.GetName()
+								+ " for " + resolver.getName()
 								+ ", returning control with new ID.");
 			}
 			return resolver.settingIntNewID.get();
 		} catch (Exception e) {
 			IDResolver.logger.log(Level.INFO,
 					"IDResolver - Unhandled exception in ConflictHelper.", e);
-			throw new RuntimeException("Unhandled exception in ConflictHelper.",e);
+			throw new RuntimeException(
+					"Unhandled exception in ConflictHelper.", e);
 		}
 	}
 
-	public static void DisableLooseSettingsCheck() {
+	private static void convertIDRSaveOne() {
+		Properties oldIDs = (Properties) IDResolver.knownIDs.clone();
+		IDResolver.knownIDs.clear();
+
+		for (Entry<Object, Object> entry : oldIDs.entrySet()) {
+			String key = (String) entry.getKey();
+			String[] info = IDResolver.getInfoFromSaveString(key);
+			IDResolver.knownIDs.put((IDResolver.isBlockType(key) ? "BlockID."
+					: "ItemID.") + info[2] + "|" + info[1], entry.getValue());
+		}
+	}
+
+	public static void disableLooseSettingsCheck() {
 		IDResolver.checkForLooseSettings.set(false);
-		IDResolver.UpdateTickSettings();
+		IDResolver.updateTickSettings();
 	}
 
 	@SuppressWarnings("unused")
-	private static void DisplayIDStatus() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void displayIDStatus() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'DisplayIDStatus' button.");
 
-		if(idToMod == null)
-		{
-			IDResolver.GetLogger().log(Level.INFO,
+		if (IDResolver.idToMod == null) {
+			IDResolver.getLogger().log(Level.INFO,
 					"IDResolver - ID - Mod map is null. Regenerating.");
-			try
-			{
-				idToMod = new Hashtable<Integer, String>(IDResolver.loadedEntries.size());
-			for (Entry<Object, Object> entry : IDResolver.knownIDs.entrySet()) {
-				String key = (String) entry.getKey();
-				if("SAVEVERSION".equals(key))
-					continue;
-				if(IDResolver.loadedEntries.contains(key))
-				{
-					String[] info = GetInfoFromSaveString(key);
-					Integer value = Integer.parseInt((String) entry.getValue());
-					boolean isBlock = IsBlockType(info[0]);
-					if(isBlock ? (Block.blocksList[value] != null) : (Item.itemsList[value] != null))
-					{
-						idToMod.put(value, info[1]);
+			try {
+				IDResolver.idToMod = new Hashtable<Integer, String>(
+						IDResolver.loadedEntries.size());
+				for (Entry<Object, Object> entry : IDResolver.knownIDs
+						.entrySet()) {
+					String key = (String) entry.getKey();
+					if ("SAVEVERSION".equals(key)) {
+						continue;
+					}
+					if (IDResolver.loadedEntries.contains(key)) {
+						String[] info = IDResolver.getInfoFromSaveString(key);
+						Integer value = Integer.parseInt((String) entry
+								.getValue());
+						boolean isBlock = IDResolver.isBlockType(info[0]);
+						if (isBlock ? (Block.blocksList[value] != null)
+								: (Item.itemsList[value] != null)) {
+							IDResolver.idToMod.put(value, info[1]);
+						}
 					}
 				}
-			}
-			
-			IDResolver.GetLogger().log(Level.INFO,
-					"IDResolver - Finished generation of ID - Mod map..");
-			}
-			catch(Throwable e)
-			{
-				IDResolver.GetLogger().log(Level.INFO,
-						"IDResolver - Could not generate ID - Mod map. Possibly corrupted database? Skipping.",e);
-				idToMod = null;
+
+				IDResolver.getLogger().log(Level.INFO,
+						"IDResolver - Finished generation of ID - Mod map..");
+			} catch (Throwable e) {
+				IDResolver
+						.getLogger()
+						.log(Level.INFO,
+								"IDResolver - Could not generate ID - Mod map. Possibly corrupted database? Skipping.",
+								e);
+				IDResolver.idToMod = null;
 			}
 		}
-		
+
 		ModAction mergedActions = null;
-		
+
 		WidgetSinglecolumn area = new WidgetSinglecolumn();
 
 		area.childDefaultWidth = 250;
 		area.childDefaultHeight = 40;
 		int freeSlotStart = -1;
-		String[] freeName = new String[]{"block", "block or item","item"};
-		String[] freeNames = new String[]{"blocks", "blocks or items","items"};
+		String[] freeName = new String[] { "block", "block or item", "item" };
+		String[] freeNames = new String[] { "blocks", "blocks or items",
+				"items" };
 		for (int i = 1; i < Item.itemsList.length; i++) {
-			
-			
+
 			boolean addTick = false;
 			Label label = null;
 			StringBuilder tooltipText = null;
 			ItemStack stack = new ItemStack(i, 1, 0);
-			int position = GetPosition(i);
-			int exists = GetExistance(position,i);
-			
+			int position = IDResolver.getPosition(i);
+			int exists = IDResolver.getExistance(position, i);
+
 			if (exists == 0) {
 				if (freeSlotStart == -1) {
 					freeSlotStart = i;
 				}
 				int next = i + 1;
-				if(next != Item.itemsList.length)
-				{
-				int nextPosition = GetPosition(next);
-				int nextExists = GetExistance(nextPosition,next);
-				
-				boolean generateRangeItem = (nextExists != 0);
-				
-				if (!generateRangeItem && (nextPosition == position)) {
-					continue;
+				if (next != Item.itemsList.length) {
+					int nextPosition = IDResolver.getPosition(next);
+					int nextExists = IDResolver
+							.getExistance(nextPosition, next);
+
+					boolean generateRangeItem = (nextExists != 0);
+
+					if (!generateRangeItem && (nextPosition == position)) {
+						continue;
+					}
 				}
-				}
-				
+
 				if (freeSlotStart != i) {
 					label = new Label(String.format(
 							"Slots %-4s - %-4s: Open slots", freeSlotStart, i));
 					tooltipText = new StringBuilder(
 							String.format(
 									"Open Slots\r\n\r\nThis slot range of %s is open for any %s to use.",
-									i - freeSlotStart,
-									freeNames[position]));
+									i - freeSlotStart, freeNames[position]));
 				} else {
 					label = new Label(String.format("Slot %-4s: Open slot", i));
 					tooltipText = new StringBuilder(
@@ -335,10 +415,8 @@ public class IDResolver implements Runnable {
 									freeName[position]));
 				}
 				freeSlotStart = -1;
-			}
-			else
-			{
-				String stackName = GetItemNameForStack(stack);
+			} else {
+				String stackName = IDResolver.getItemNameForStack(stack);
 				tooltipText = new StringBuilder(String.format(
 						"Slot %-4s: %s",
 						i,
@@ -349,24 +427,26 @@ public class IDResolver implements Runnable {
 				tooltipText.append(String.format("\r\n\r\nInternal name: %s",
 						stackName));
 				addTick = Item.itemsList[i].hasSubtypes;
-				
-				BuildItemInfo(tooltipText,i,exists == 1);
+
+				IDResolver.buildItemInfo(tooltipText, i, exists == 1);
 			}
-			
+
 			WidgetSingleRow row = new WidgetSingleRow(200, 32);
 			WidgetItem2DRender renderer = new WidgetItem2DRender(i);
 			row.add(renderer, 32, 32);
-			TextArea tooltip = GuiApiHelper.makeTextArea(tooltipText.toString(), false);
-			if(addTick)
-			{
-				ModAction action = new ModAction(IDResolver.class, "TickIDSubItem", WidgetItem2DRender.class, TextArea.class,Label.class).setDefaultArguments(renderer,tooltip,label);
-				action.setTag("SubItem Tick for " + tooltipText.subSequence(0, tooltipText.indexOf("\r\n")));
-				if(mergedActions != null)
-				{
+			TextArea tooltip = GuiApiHelper.makeTextArea(
+					tooltipText.toString(), false);
+			if (addTick) {
+				ModAction action = new ModAction(IDResolver.class,
+						"tickIDSubItem", WidgetItem2DRender.class,
+						TextArea.class, Label.class).setDefaultArguments(
+						renderer, tooltip, label);
+				action.setTag("SubItem Tick for "
+						+ tooltipText.subSequence(0,
+								tooltipText.indexOf("\r\n")));
+				if (mergedActions != null) {
 					mergedActions = mergedActions.mergeAction(action);
-				}
-				else
-				{
+				} else {
 					mergedActions = action;
 				}
 			}
@@ -377,181 +457,16 @@ public class IDResolver implements Runnable {
 
 		WidgetSimplewindow window = new WidgetSimplewindow(area,
 				"ID Resolver Status Report");
-		if(mergedActions != null)
-		{
-		WidgetTick ticker = new WidgetTick();
-		ticker.addCallback(mergedActions, 500);
-		window.mainWidget.add(ticker);
+		if (mergedActions != null) {
+			WidgetTick ticker = new WidgetTick();
+			ticker.addCallback(mergedActions, 500);
+			window.mainWidget.add(ticker);
 		}
 		window.backButton.setText("OK");
 		GuiModScreen.show(window);
 	}
-	
-	private static int GetPosition(int i)
-	{
-		int position = 0;
-		if(i >= Block.blocksList.length)
-		{
-			position = 2;
-		}
-		else
-		{
-			if(i >= Item.shovelSteel.shiftedIndex)
-			{
-				position = 1;
-			}
-		}
-		return position;
-	}
-	
-	private static int GetExistance(int position,int i)
-	{
-		ItemStack stack = new ItemStack(i, 1, 0);
-		int exists = 0;
-		switch(position)
-		{
-		case 0:
-		{
-			if((Block.blocksList[i] != null) && (stack.getItem() != null))
-			{
-				exists = 1;
-			}
-			break;
-		}
-		case 1:
-		{
-			if((Block.blocksList[i] != null) && (stack.getItem() != null))
-			{
-				exists = 1;
-			}
-			else
-			{
-				if(Item.itemsList[i] != null)
-				{
-					exists = 2;
-				}
-			}
-			break;
-		}
-		case 2:
-		{
-			if(Item.itemsList[i] != null)
-			{
-				exists = 2;
-			}
-			break;
-		}
-		}
-		return exists;
-	}
-	
-	private static String[] armorTypes = new String[]{"Helmet","Chestplate","Leggings","Boots"};
-	
-	private static void BuildItemInfo(StringBuilder builder,int index,boolean isBlock)
-	{
-		Item item = Item.itemsList[index];
-		
-		builder.append(String.format("\r\nSubitems: %s",
-				item.hasSubtypes));
-		
-		builder.append(String.format("\r\nIs Block: %s",
-				isBlock));
-		
-		if(!isBlock)
-		{
-			
-			builder.append(String.format("\r\nClassname: %s",
-					item.getClass().getName()));
-		}
-		else
-		{
-			builder.append(String.format("\r\nClassname: %s",
-					Block.blocksList[index].getClass().getName()));
-		}
-		
-		builder.append(String.format("\r\nMax stack: %s",
-				item.getItemStackLimit()));
-		builder.append(String.format(
-				"\r\nDamage versus entities: %s",
-				item.getDamageVsEntity(null)));
-		builder.append(String.format("\r\nEnchantability: %s",
-				item.getItemEnchantability()));
-		builder.append(String.format("\r\nMax Damage: %s",
-				item.getMaxDamage()));
-		if(item instanceof ItemArmor)
-		{
-			ItemArmor armor = ((ItemArmor)item);
-			builder.append(String.format("\r\nMax Damage Reduction: %s",
-					armor.damageReduceAmount));
-			builder.append(String.format("\r\nArmor Slot: %s",
-					IDResolver.armorTypes[armor.armorType]));
-		}
-		
-		if(item instanceof ItemFood)
-		{
-			ItemFood food = ((ItemFood)item);
-			builder.append(String.format("\r\nHeal Amount: %s",
-					food.getHealAmount()));
-			builder.append(String.format("\r\nHunger Modifier: %s",
-					food.getSaturationModifier()));
-			builder.append(String.format("\r\nWolves enjoy: %s",
-					food.isWolfsFavoriteMeat()));
-		}
-		
-		if (isBlock) {
-			Block block = Block.blocksList[index];
-			builder.append(String.format("\r\nBlock Hardness: %s",
-					block.getHardness()));
-			builder.append(String.format(
-					"\r\nBlock Slipperiness: %s",
-					block.slipperiness));
-			builder.append(String.format(
-					"\r\nBlock Light Level: %s",
-					Block.lightValue[index]));
-			builder.append(String.format(
-					"\r\nBlock Opacity: %s",
-					Block.lightOpacity[index]));
-		}
-		
-		if(idToMod != null)
-		{
-			if(idToMod.containsKey(index))
-			{
-				builder.append(String.format("\r\nMod: %s",
-						idToMod.get(index)));
-			}
-		}
-	}
-	
-	@SuppressWarnings("unused")
-	private static void TickIDSubItem(WidgetItem2DRender renderer, TextArea textArea,Label label)
-	{
-		ItemStack stack = renderer.getRenderStack();
-		int damage = stack.getItemDamage();
-		damage++;
-		if(damage > 15)
-		{
-			damage = 0;
-		}
-		stack.setItemDamage(damage);
-		
-		Item item = stack.getItem();
-		String stackName = GetItemNameForStack(stack);
-		StringBuilder tooltipText = new StringBuilder(String.format(
-				"Slot %-4s : Metadata %s: %s",
-				stack.itemID,damage,
-				StringTranslate.getInstance().translateNamedKey(
-						stackName)));
 
-		tooltipText.append(String.format("\r\n\r\nInternal name: %s",
-				stackName));
-		
-		BuildItemInfo(tooltipText,stack.itemID,GetExistance(GetPosition(stack.itemID),stack.itemID) == 1);
-		
-		GuiApiHelper.setTextAreaText(textArea, tooltipText.toString());
-	}
-	
-	private static String GenerateIDStatusReport(int showFree) {
+	private static String generateIDStatusReport(int showFree) {
 		StringBuilder report = new StringBuilder();
 		String linebreak = System.getProperty("line.separator");
 		report.append("ID Resolver ID Status report").append(linebreak);
@@ -562,67 +477,70 @@ public class IDResolver implements Runnable {
 		int totalRegisteredBlocks = 1;
 		int totalUncleanBlockSlots = 0;
 		int totalRegisteredItems = 0;
-		
+
 		StringBuilder reportIDs = new StringBuilder();
-		
-		String[] names = new String[]{"Free ","Block","Item "};
-		
-		String[] freeName = new String[]{"block", "block or item","item"};
-		String[] freeNames = new String[]{"blocks", "blocks or items","items"};
-		
+
+		String[] names = new String[] { "Free ", "Block", "Item " };
+
+		String[] freeName = new String[] { "block", "block or item", "item" };
+		String[] freeNames = new String[] { "blocks", "blocks or items",
+				"items" };
+
 		int freeSlotStart = -1;
-		
+
 		for (int i = 1; i < Item.itemsList.length; i++) {
 			String itemName = null;
 			String transName = null;
 			String className = null;
-			
-			int position = IDResolver.GetPosition(i);
-			int exists = IDResolver.GetExistance(position,i);
-			
-			switch(exists)
-			{
-			case 0:
-			{
-				if(showFree == 0)
-				{
+
+			int position = IDResolver.getPosition(i);
+			int exists = IDResolver.getExistance(position, i);
+
+			switch (exists) {
+			case 0: {
+				if (showFree == 0) {
 					continue;
 				}
 				if (freeSlotStart == -1) {
 					freeSlotStart = i;
 				}
-				
+
 				int next = i + 1;
-				if(next != Item.itemsList.length)
-				{
-					if(showFree == 2)
-					{
-				int nextPosition = GetPosition(next);
-				int nextExists = GetExistance(nextPosition,next);
-				
-				boolean generateRangeItem = (nextExists != 0);
-				
-				if (!generateRangeItem && (nextPosition == position)) {
-					continue;
-				}
+				if (next != Item.itemsList.length) {
+					if (showFree == 2) {
+						int nextPosition = IDResolver.getPosition(next);
+						int nextExists = IDResolver.getExistance(nextPosition,
+								next);
+
+						boolean generateRangeItem = (nextExists != 0);
+
+						if (!generateRangeItem && (nextPosition == position)) {
+							continue;
+						}
 					}
 				}
-				
+
 				if (freeSlotStart != i) {
-					reportIDs.append(
-							String.format("%s %-8s - %-8s - This slot range of %s is open for any %s to use.", names[exists], freeSlotStart, i, i - freeSlotStart, freeNames[position])).append(
-							linebreak);
+					reportIDs
+							.append(String
+									.format("%s %-8s - %-8s - This slot range of %s is open for any %s to use.",
+											names[exists], freeSlotStart, i, i
+													- freeSlotStart,
+											freeNames[position])).append(
+									linebreak);
 				} else {
-					
-					reportIDs.append(
-							String.format("%s %-8s - This slot is open for any %s to use.", names[exists], i, freeName[position])).append(
-							linebreak);
+
+					reportIDs
+							.append(String
+									.format("%s %-8s - This slot is open for any %s to use.",
+											names[exists], i,
+											freeName[position])).append(
+									linebreak);
 				}
 				freeSlotStart = -1;
 				continue;
 			}
-			case 1:
-			{
+			case 1: {
 				Block block = Block.blocksList[i];
 				totalRegisteredBlocks++;
 				itemName = block.getBlockName();
@@ -630,47 +548,43 @@ public class IDResolver implements Runnable {
 				className = block.getClass().getName();
 				break;
 			}
-			case 2:
-			{
-				if(checkClean && i < Block.blocksList.length)
-				{
+			case 2: {
+				if (checkClean && (i < Block.blocksList.length)) {
 					totalUncleanBlockSlots++;
 				}
-				
+
 				Item item = Item.itemsList[i];
 				totalRegisteredItems++;
 				itemName = item.getItemName();
-				transName = StatCollector.translateToLocal(itemName
-						+ ".name");
+				transName = StatCollector.translateToLocal(itemName + ".name");
 				className = item.getClass().getName();
 				break;
 			}
 			}
-			
+
 			reportIDs.append(
-					String.format("%s %-8s - %-31s - %-31s - %s", names[exists], i, itemName,
-							transName, className)).append(
-					linebreak);
+					String.format("%s %-8s - %-31s - %-31s - %s",
+							names[exists], i, itemName, transName, className))
+					.append(linebreak);
 		}
 		report.append("Quick stats:").append(linebreak);
-		report.append(
-				String.format("Block ID Status: %d/%d used. %d available.",
-						totalRegisteredBlocks, Block.blocksList.length,
-						(Block.blocksList.length - totalUncleanBlockSlots) - totalRegisteredBlocks));
-		if(checkClean)
-		{
+		report.append(String.format(
+				"Block ID Status: %d/%d used. %d available.",
+				totalRegisteredBlocks, Block.blocksList.length,
+				(Block.blocksList.length - totalUncleanBlockSlots)
+						- totalRegisteredBlocks));
+		if (checkClean) {
 			report.append("(Unclean Block slots: ");
 			report.append(totalUncleanBlockSlots);
 			report.append(")" + linebreak);
-		}
-		else
-		{
+		} else {
 			report.append(linebreak);
 		}
 		report.append(
 				String.format("Item ID Status: %d/%d used. %d available.",
 						totalRegisteredItems, Item.itemsList.length,
-						(Item.itemsList.length - Item.shovelSteel.shiftedIndex) - totalRegisteredItems)).append(linebreak)
+						(Item.itemsList.length - Item.shovelSteel.shiftedIndex)
+								- totalRegisteredItems)).append(linebreak)
 				.append(linebreak);
 		report.append(
 				"Type  ID      - Name                           - Tooltip                        - Class")
@@ -679,8 +593,8 @@ public class IDResolver implements Runnable {
 		return report.toString();
 	}
 
-	public static int GetConflictedBlockID(int RequestedID, Block newBlock) {
-		IDResolver.GetLogger().log(Level.INFO,
+	public static int getConflictedBlockID(int RequestedID, Block newBlock) {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - 'GetConflictedBlockID' called.");
 
 		if (!IDResolver.initialized) {
@@ -704,24 +618,37 @@ public class IDResolver implements Runnable {
 			return RequestedID;
 		}
 
-		if (!IDResolver.IsModObject()) {
+		if (!IDResolver.isModObject(RequestedID, true)) {
 			IDResolver
-					.GetLogger()
+					.getLogger()
 					.log(Level.INFO,
 							"IDResolver - Detected Vanilla Block: Returning requested ID.");
 			return RequestedID;
 		}
+
+		if (IDResolver.vanillaIDs[RequestedID]) {
+			IDResolver
+					.getLogger()
+					.log(Level.INFO,
+							"IDResolver - Mod is attempting to overwrite what seems to be a vanilla ID: Allowing the overwrite.");
+			return RequestedID;
+		}
+
 		IDResolver resolver = new IDResolver(RequestedID, newBlock);
-		IDResolver.GetLogger().log(
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - Long name of requested block is "
 						+ resolver.longName);
-		resolver.SetupGui(RequestedID);
-		return IDResolver.ConflictHelper(resolver);
+		resolver.setupGui(RequestedID);
+		return IDResolver.conflictHelper(resolver);
 	}
 
-	public static int GetConflictedItemID(int RequestedID, Item newItem) {
-		IDResolver.GetLogger().log(Level.INFO,
+	public static int GetConflictedBlockID(int RequestedID, Block newBlock) {
+		return IDResolver.getConflictedBlockID(RequestedID, newBlock);
+	}
+
+	public static int getConflictedItemID(int RequestedID, Item newItem) {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - 'GetConflictedItemID' called.");
 
 		if (!IDResolver.initialized) {
@@ -745,30 +672,71 @@ public class IDResolver implements Runnable {
 			return RequestedID;
 		}
 
-		if (!IDResolver.IsModObject()) {
+		if (!IDResolver.isModObject(RequestedID, true)) {
 			IDResolver
-					.GetLogger()
+					.getLogger()
 					.log(Level.INFO,
 							"IDResolver - Detected Vanilla Item: Returning requested ID.");
 			return RequestedID;
 		}
+		if (IDResolver.vanillaIDs[RequestedID]) {
+			IDResolver
+					.getLogger()
+					.log(Level.INFO,
+							"IDResolver - Mod is attempting to overwrite what seems to be a vanilla ID: Allowing the overwrite.");
+			return RequestedID;
+		}
 		IDResolver resolver = new IDResolver(RequestedID, newItem);
-		IDResolver.GetLogger().log(
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - Long name of requested item is "
 						+ resolver.longName);
-		resolver.SetupGui(RequestedID);
-		return IDResolver.ConflictHelper(resolver);
+		resolver.setupGui(RequestedID);
+		return IDResolver.conflictHelper(resolver);
 	}
 
-	public static String GetExtraInfo() {
+	public static int GetConflictedItemID(int RequestedID, Item newItem) {
+		return IDResolver.getConflictedItemID(RequestedID, newItem);
+	}
+
+	private static int getExistance(int position, int i) {
+		ItemStack stack = new ItemStack(i, 1, 0);
+		int exists = 0;
+		switch (position) {
+		case 0: {
+			if ((Block.blocksList[i] != null) && (stack.getItem() != null)) {
+				exists = 1;
+			}
+			break;
+		}
+		case 1: {
+			if ((Block.blocksList[i] != null) && (stack.getItem() != null)) {
+				exists = 1;
+			} else {
+				if (Item.itemsList[i] != null) {
+					exists = 2;
+				}
+			}
+			break;
+		}
+		case 2: {
+			if (Item.itemsList[i] != null) {
+				exists = 2;
+			}
+			break;
+		}
+		}
+		return exists;
+	}
+
+	public static String getExtraInfo() {
+
 		return IDResolver.extraInfo;
 	}
 
-	private static int GetFirstOpenBlock() {
+	private static int getFirstOpenBlock() {
 		for (int i = 1; i < Block.blocksList.length; i++) {
-			if ((Block.blocksList[i] != null)
-					|| IDResolver.IntHasStoredID(i, true)) {
+			if (!IDResolver.isSlotFree(i)) {
 				continue;
 			}
 			return i;
@@ -776,10 +744,9 @@ public class IDResolver implements Runnable {
 		return -1;
 	}
 
-	private static int GetFirstOpenItem() {
-		for (int i = Block.blocksList.length; i < Item.itemsList.length; i++) {
-			if ((Item.itemsList[i] != null)
-					|| IDResolver.IntHasStoredID(i, false)) {
+	private static int getFirstOpenItem() {
+		for (int i = Item.shovelSteel.shiftedIndex; i < Item.itemsList.length; i++) {
+			if (!IDResolver.isSlotFree(i)) {
 				continue;
 			}
 			return i;
@@ -790,25 +757,24 @@ public class IDResolver implements Runnable {
 	/**
 	 * Just a helper method.
 	 * 
-	 * @param input the key to split up
+	 * @param input
+	 *            the key to split up
 	 * @return an array: ID | BaseMod. USED TO BE Class|BaseMod|ID
 	 */
-	private static String[] GetInfoFromSaveString(String input) {
+	private static String[] getInfoFromSaveString(String input) {
 		return input.split("[|]");
 	}
 
-	private static String GetItemNameForStack(ItemStack stack) {
-		if(stack.getItem() == null)
-		{
+	private static String getItemNameForStack(ItemStack stack) {
+		if (stack.getItem() == null) {
 			return "";
 		}
 		return stack.getItem().getItemNameIS(stack);
 	}
 
-	private static int GetLastOpenBlock() {
+	private static int getLastOpenBlock() {
 		for (int i = Block.blocksList.length - 1; i >= 1; i--) {
-			if ((Block.blocksList[i] != null)
-					|| IDResolver.IntHasStoredID(i, true)) {
+			if (!IDResolver.isSlotFree(i)) {
 				continue;
 			}
 			return i;
@@ -816,10 +782,9 @@ public class IDResolver implements Runnable {
 		return -1;
 	}
 
-	private static int GetLastOpenItem() {
-		for (int i = Item.itemsList.length - 1; i >= Block.blocksList.length; i--) {
-			if ((Item.itemsList[i] != null)
-					|| IDResolver.IntHasStoredID(i, false)) {
+	private static int getLastOpenItem() {
+		for (int i = Item.itemsList.length - 1; i >= Item.shovelSteel.shiftedIndex; i--) {
+			if (!IDResolver.isSlotFree(i)) {
 				continue;
 			}
 			return i;
@@ -827,11 +792,11 @@ public class IDResolver implements Runnable {
 		return -1;
 	}
 
-	public static Logger GetLogger() {
+	public static Logger getLogger() {
 		return IDResolver.logger;
 	}
 
-	private static String GetLongBlockName(Block block, int originalrequestedID) {
+	private static String getLongBlockName(Block block, int originalrequestedID) {
 		String name = Integer.toString(originalrequestedID) + "|";
 		StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
 		int bestguess = -1;
@@ -859,12 +824,12 @@ public class IDResolver implements Runnable {
 		if (bestguess == -1) {
 			name += "IDRESOLVER_UNKNOWN_BLOCK_" + block.getClass().getName();
 		} else {
-			name += IDResolver.TrimMCP(stacktrace[bestguess].getClassName());
+			name += IDResolver.trimMCP(stacktrace[bestguess].getClassName());
 		}
 		return name;
 	}
 
-	private static String GetLongItemName(Item item, int originalrequestedID) {
+	private static String getLongItemName(Item item, int originalrequestedID) {
 		String name = Integer.toString(originalrequestedID) + "|";
 		StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
 		int bestguess = -1;
@@ -892,18 +857,18 @@ public class IDResolver implements Runnable {
 		if (bestguess == -1) {
 			name += "IDRESOLVER_UNKNOWN_BLOCK_" + item.getClass().getName();
 		} else {
-			name += IDResolver.TrimMCP(stacktrace[bestguess].getClassName());
+			name += IDResolver.trimMCP(stacktrace[bestguess].getClassName());
 		}
 		return name;
 	}
 
-	private static String GetlongName(Object obj, int ID) {
+	private static String getlongName(Object obj, int ID) {
 		String name = null;
 		if (obj instanceof Block) {
-			name = "BlockID." + IDResolver.GetLongBlockName((Block) obj, ID);
+			name = "BlockID." + IDResolver.getLongBlockName((Block) obj, ID);
 		}
 		if (obj instanceof Item) {
-			name = "ItemID." + IDResolver.GetLongItemName((Item) obj, ID);
+			name = "ItemID." + IDResolver.getLongItemName((Item) obj, ID);
 		}
 		IDResolver.loadedEntries.add(name);
 		if (name != null) {
@@ -920,7 +885,7 @@ public class IDResolver implements Runnable {
 						+ obj.toString());
 	}
 
-	private static int GetModPriority(String modname) {
+	private static int getModPriority(String modname) {
 		if (IDResolver.modPriorities.containsKey(modname)) {
 			try {
 				int value = Integer.parseInt(IDResolver.modPriorities
@@ -937,54 +902,72 @@ public class IDResolver implements Runnable {
 		return 0;
 	}
 
-	private static String GetStoredIDName(int ID, boolean block) {
-		return IDResolver.GetStoredIDName(ID, block, true);
+	private static int getPosition(int i) {
+		int position = 0;
+		if (i >= Block.blocksList.length) {
+			position = 2;
+		} else {
+			if (i >= Item.shovelSteel.shiftedIndex) {
+				position = 1;
+			}
+		}
+		return position;
 	}
 
-	private static String GetStoredIDName(int ID, boolean block, boolean trim) {
+	private static String getStoredIDName(int ID, boolean block) {
+		return IDResolver.getStoredIDName(ID, block, true);
+	}
+
+	private static String getStoredIDName(int ID, boolean block, boolean trim) {
 		for (Map.Entry<Object, Object> entry : IDResolver.knownIDs.entrySet()) {
 			String key = ((String) entry.getKey());
 			if (key.startsWith("PRIORITY|")) {
 				continue;
 			}
-			if("SAVEVERSION".equals(key))
+			if ("SAVEVERSION".equals(key)) {
 				continue;
-			
+			}
+
 			if (ID == Integer.parseInt((String) entry.getValue())) {
-				return trim ? IDResolver.TrimType(key, block) : key;
+				return trim ? IDResolver.trimType(key, block) : key;
 			}
 		}
 		return null;
 	}
 
-	private static String GetTypeName(Boolean block) {
+	private static String getTypeName(Boolean block) {
 		return (block ? " Block" : " Item").substring(1);
 	}
 
-	public static boolean HasStoredID(int ID, boolean block) {
+	public static boolean hasStoredID(int ID, boolean block) {
 		if (block && !IDResolver.wasBlockInited) {
 			IDResolver.wasBlockInited = true;
 		} else if (!block && !IDResolver.wasItemInited) {
 			IDResolver.wasItemInited = true;
 		}
-		return IDResolver.IntHasStoredID(ID, block) | IDResolver.IsModObject();
+		return IDResolver.intHasStoredID(ID, block)
+				| IDResolver.isModObject(ID, block);
+	}
+
+	public static boolean HasStoredID(int ID, boolean block) {
+		return IDResolver.hasStoredID(ID, block);
 	}
 
 	@SuppressWarnings("unused")
-	private static void IgnoreLooseDetectionAndDisable() {
-		IDResolver.DisableLooseSettingsCheck();
+	private static void ignoreLooseDetectionAndDisable() {
+		IDResolver.disableLooseSettingsCheck();
 	}
 
-	private static boolean IntHasStoredID(int ID, boolean block) {
+	private static boolean intHasStoredID(int ID, boolean block) {
 		if (IDResolver.initialized) {
 			if (IDResolver.knownIDs.containsValue(Integer.toString(ID))) {
-				return IDResolver.GetStoredIDName(ID, block) != null;
+				return IDResolver.getStoredIDName(ID, block) != null;
 			}
 		}
 		return false;
 	}
 
-	private static boolean IsBlockType(String input) {
+	private static boolean isBlockType(String input) {
 		if (input.startsWith("BlockID.")) {
 			return true;
 		}
@@ -994,30 +977,63 @@ public class IDResolver implements Runnable {
 		throw new InvalidParameterException("Input is not fully named!");
 	}
 
-	private static Boolean IsModObject() {
+	private static Boolean isModObject(int id, boolean isBlock) {
 		StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
+		boolean possibleVanilla = false;
 		for (int i = 1; i < stacktrace.length; i++) {
 			try {
-				if (BaseMod.class.isAssignableFrom(Class.forName(stacktrace[i]
-						.getClassName()))) {
+				Class classType = Class.forName(stacktrace[i].getClassName());
+				if (BaseMod.class.isAssignableFrom(classType)) {
 					return true;
+				}
+				if ("<clinit>".equals(stacktrace[i].getMethodName())
+						&& (isBlock ? Block.class == classType
+								: Item.class == classType)) {
+					possibleVanilla = true;
 				}
 			} catch (Throwable e) {
 				// Should never happen, but in this case just going to coast
 				// right over it.
 			}
 		}
+		if (possibleVanilla) {
+			IDResolver.vanillaIDs[id] = true;
+		}
 		return false;
 	}
 
+	private static boolean isSlotFree(int i) {
+		if (i < Block.blocksList.length) {
+			if ((Block.blocksList[i] != null)
+					|| IDResolver.intHasStoredID(i, true)) {
+				return false;
+			}
+		}
+		return !(Item.itemsList[i] != null)
+				|| IDResolver.intHasStoredID(i, false);
+	}
+
 	@SuppressWarnings("unused")
-	private static void LowerModPriorityFromMenu(String modName,
+	private static void linkCallback(String url) {
+		IDResolver.getLogger().log(Level.INFO,
+				"IDResolver - User pressed link. URL is: " + url);
+		File file = new File(url);
+		try {
+			Desktop.getDesktop().open(file);
+		} catch (Throwable e) {
+			e.printStackTrace();
+			Sys.openURL(file.toURI().toString());
+		}
+	}
+
+	@SuppressWarnings("unused")
+	private static void lowerModPriorityFromMenu(String modName,
 			SimpleTextAreaModel textarea) {
-		IDResolver.GetLogger().log(
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - User pressed 'LowerModPriorityFromMenu' button with "
 						+ modName);
-		int intlevel = IDResolver.GetModPriority(modName);
+		int intlevel = IDResolver.getModPriority(modName);
 		if (intlevel > 0) {
 			intlevel--;
 		}
@@ -1025,18 +1041,18 @@ public class IDResolver implements Runnable {
 		IDResolver.modPriorities.setProperty(modName, newlevel);
 		textarea.setText(modName + " - Currently at Priority Level " + newlevel);
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO, "Could not save properties", e);
 		}
 	}
 
-	private static void OverrideBlockID(int newid, int oldid) {
+	private static void overrideBlockID(int newid, int oldid) {
 		Block oldblock = Block.blocksList[newid];
 		Block.blocksList[newid] = null;
 		if (oldblock != null) {
 			try {
-				IDResolver.blockidfield.set(oldblock, oldid);
+				IDResolver.blockIdField.set(oldblock, oldid);
 			} catch (Throwable e) {
 				IDResolver.logger.log(Level.INFO,
 						"IDResolver - Unable to override blockID!", e);
@@ -1073,7 +1089,7 @@ public class IDResolver implements Runnable {
 		Item.itemsList[newid] = null;
 		if (oldblockitem != null) {
 			try {
-				IDResolver.itemidfield.set(oldblockitem, oldid);
+				IDResolver.itemIdField.set(oldblockitem, oldid);
 			} catch (Throwable e) {
 				IDResolver.logger
 						.log(Level.INFO,
@@ -1086,15 +1102,15 @@ public class IDResolver implements Runnable {
 		}
 		Block.blocksList[oldid] = oldblock;
 		Item.itemsList[oldid] = oldblockitem;
-		idToMod = null;
+		IDResolver.idToMod = null;
 	}
 
-	private static void OverrideItemID(int newid, int oldid) {
+	private static void overrideItemID(int newid, int oldid) {
 		Item olditem = Item.itemsList[newid];
 		Item.itemsList[newid] = null;
 		if (olditem != null) {
 			try {
-				IDResolver.itemidfield.set(olditem, oldid);
+				IDResolver.itemIdField.set(olditem, oldid);
 			} catch (Throwable e) {
 				IDResolver.logger.log(Level.INFO,
 						"IDResolver - Unable to override itemID!", e);
@@ -1103,46 +1119,33 @@ public class IDResolver implements Runnable {
 			}
 		}
 		Item.itemsList[oldid] = olditem;
-		idToMod = null;
+		IDResolver.idToMod = null;
 	}
 
-	private static String RaiseModPriority(String modname) {
+	private static String raiseModPriority(String modname) {
 		String newlevel = Integer
-				.toString(IDResolver.GetModPriority(modname) + 1);
+				.toString(IDResolver.getModPriority(modname) + 1);
 		IDResolver.modPriorities.setProperty(modname, newlevel);
 		return newlevel;
 	}
 
 	@SuppressWarnings("unused")
-	private static void RaiseModPriorityFromMenu(String modName,
+	private static void raiseModPriorityFromMenu(String modName,
 			SimpleTextAreaModel textarea) {
-		IDResolver.GetLogger().log(
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - User pressed 'RaiseModPriorityFromMenu' button with "
 						+ modName);
 		textarea.setText(modName + " - Currently at Priority Level "
-				+ IDResolver.RaiseModPriority(modName));
+				+ IDResolver.raiseModPriority(modName));
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO, "Could not save properties", e);
 		}
 	}
-	
-	private static void ConvertIDRSaveOne()
-	{
-		Properties oldIDs = (Properties) IDResolver.knownIDs.clone();
-		IDResolver.knownIDs.clear();
-		
-		for (Entry<Object, Object> entry : oldIDs.entrySet())
-		{
-			String key = (String)entry.getKey();
-			String[] info = GetInfoFromSaveString(key);
-			IDResolver.knownIDs.put((IsBlockType(key) ? "BlockID." : "ItemID.") + info[2] + "|" + info[1], entry.getValue());
-		}
-	}
 
-	private static void ReloadIDs() {
+	private static void reloadIDs() {
 		IDResolver.knownIDs = new Properties();
 		IDResolver.modPriorities = new Properties();
 		boolean forceSave = false;
@@ -1171,14 +1174,18 @@ public class IDResolver implements Runnable {
 									+ Integer.toString(IDResolver.knownIDs
 											.size()) + " IDs sucessfully.");
 					stream.close();
-					
-					String version = IDResolver.knownIDs.getProperty("SAVEVERSION");
-					
-					if(version == null)
-					{
-						IDResolver.logger.log(Level.INFO,"IDResolver - Settings file is v1, but ID resolver now uses v2. Converting.");
-						ConvertIDRSaveOne();
-						IDResolver.logger.log(Level.INFO,"IDResolver - Settings file convertion complete.");
+
+					String version = IDResolver.knownIDs
+							.getProperty("SAVEVERSION");
+
+					if (version == null) {
+						IDResolver.logger
+								.log(Level.INFO,
+										"IDResolver - Settings file is v1, but ID resolver now uses v2. Converting.");
+						IDResolver.convertIDRSaveOne();
+						IDResolver.logger
+								.log(Level.INFO,
+										"IDResolver - Settings file convertion complete.");
 						forceSave = true;
 					}
 				}
@@ -1191,17 +1198,21 @@ public class IDResolver implements Runnable {
 					IDResolver.logger.log(Level.INFO, "IDResolver - Loaded "
 							+ Integer.toString(IDResolver.knownIDs.size())
 							+ " IDs sucessfully.");
-					
-					String version = IDResolver.knownIDs.getProperty("SAVEVERSION");
-					
-					if(version == null)
-					{
-						IDResolver.logger.log(Level.INFO,"IDResolver - Settings file is v1, but ID resolver now uses v2. Converting.");
-						ConvertIDRSaveOne();
-						IDResolver.logger.log(Level.INFO,"IDResolver - Settings file convertion complete.");
+
+					String version = IDResolver.knownIDs
+							.getProperty("SAVEVERSION");
+
+					if (version == null) {
+						IDResolver.logger
+								.log(Level.INFO,
+										"IDResolver - Settings file is v1, but ID resolver now uses v2. Converting.");
+						IDResolver.convertIDRSaveOne();
+						IDResolver.logger
+								.log(Level.INFO,
+										"IDResolver - Settings file convertion complete.");
 						forceSave = true;
 					}
-					
+
 				} catch (IOException e) {
 					IDResolver.logger
 							.log(Level.INFO,
@@ -1255,24 +1266,24 @@ public class IDResolver implements Runnable {
 					| (IDResolver.showOnlyConf == null)
 					| (IDResolver.checkForLooseSettings == null)) {
 				IDResolver.showTickMM = new SettingBoolean("ShowTickMM",
-						IDResolver.ShowTick(true));
+						IDResolver.showTick(true));
 				IDResolver.showTickRS = new SettingBoolean("ShowTickRS",
-						IDResolver.ShowTick(false));
+						IDResolver.showTick(false));
 				IDResolver.checkForLooseSettings = new SettingBoolean(
 						"CheckForLooseSettings",
-						IDResolver.CheckForLooseSettings());
+						IDResolver.checkForLooseSettings());
 				IDResolver.showOnlyConf = new SettingBoolean(
-						"ShowOnlyConflicts", IDResolver.ShowOnlyConflicts());
+						"ShowOnlyConflicts", IDResolver.showOnlyConflicts());
 			}
 			IDResolver.initialized = true;
-			IDResolver.UpdateTickSettings();
-			
-			if(forceSave)
-			{
-				IDResolver.logger.log(Level.INFO,"IDResolver - Saving as changes were made.");
-				StoreProperties();
+			IDResolver.updateTickSettings();
+
+			if (forceSave) {
+				IDResolver.logger.log(Level.INFO,
+						"IDResolver - Saving as changes were made.");
+				IDResolver.storeProperties();
 			}
-			
+
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO,
 					"IDResolver - Error while initalizing settings.", e);
@@ -1280,17 +1291,18 @@ public class IDResolver implements Runnable {
 		}
 	}
 
-	public static void ReLoadModGui() {
-		IDResolver.ReloadIDs();
-		
-		IDResolver.modscreen.widgetColumn.removeAllChildren();
+	public static void reLoadModGui() {
+		IDResolver.reloadIDs();
+
+		IDResolver.modScreen.widgetColumn.removeAllChildren();
 		Map<String, Vector<String>> IDmap = new HashMap<String, Vector<String>>();
 		for (Map.Entry<Object, Object> entry : IDResolver.knownIDs.entrySet()) {
 			String key = (String) entry.getKey();
-			
-			if("SAVEVERSION".equals(key))
+
+			if ("SAVEVERSION".equals(key)) {
 				continue;
-			String[] info = IDResolver.GetInfoFromSaveString(key);
+			}
+			String[] info = IDResolver.getInfoFromSaveString(key);
 			if (IDmap.containsKey(info[1])) {
 				IDmap.get(info[1]).add(key);
 			} else {
@@ -1307,27 +1319,27 @@ public class IDResolver implements Runnable {
 			window.childDefaultWidth = 300;
 			SimpleTextAreaModel textarea = new SimpleTextAreaModel();
 			textarea.setText(entry.getKey() + " - Currently at Priority Level "
-					+ IDResolver.GetModPriority(entry.getKey()), false);
+					+ IDResolver.getModPriority(entry.getKey()), false);
 			TextArea textWidget = new TextArea(textarea);
 			window.add(textWidget);
 			window.heightOverrideExceptions.put(textWidget, 0);
 			window.add(GuiApiHelper.makeButton("Raise Priority of this Mod",
-					"RaiseModPriorityFromMenu", IDResolver.class, true,
+					"raiseModPriorityFromMenu", IDResolver.class, true,
 					new Class[] { String.class, SimpleTextAreaModel.class },
 					entry.getKey(), textarea));
 			window.add(GuiApiHelper.makeButton("Lower Priority of this Mod",
-					"LowerModPriorityFromMenu", IDResolver.class, true,
+					"lowerModPriorityFromMenu", IDResolver.class, true,
 					new Class[] { String.class, SimpleTextAreaModel.class },
 					entry.getKey(), textarea));
 			window.add(GuiApiHelper.makeButton("Wipe saved IDs of this mod",
-					"WipeSavedIDsFromMenu", IDResolver.class, true,
+					"wipeSavedIDsFromMenu", IDResolver.class, true,
 					new Class[] { String.class }, entry.getKey()));
 			for (String IDEntry : entry.getValue()) {
 				int x = Integer.parseInt(IDResolver.knownIDs
 						.getProperty(IDEntry));
 				String name = null;
 				ItemStack stack = null;
-				Boolean isBlock = IDResolver.IsBlockType(IDEntry);
+				Boolean isBlock = IDResolver.isBlockType(IDEntry);
 				if (isBlock) {
 					if (Block.blocksList[x] != null) {
 						stack = new ItemStack(Block.blocksList[x]);
@@ -1338,7 +1350,7 @@ public class IDResolver implements Runnable {
 					}
 				}
 				try {
-					name = IDResolver.GetItemNameForStack(stack);
+					name = IDResolver.getItemNameForStack(stack);
 				} catch (Throwable e) {
 					stack = null;
 					name = null;
@@ -1347,98 +1359,105 @@ public class IDResolver implements Runnable {
 					if ((name != null) && (name.length() != 0)) {
 						name = translate.translateNamedKey(name);
 						if ((name == null) || (name.length() == 0)) {
-							name = IDResolver.GetItemNameForStack(stack);
+							name = IDResolver.getItemNameForStack(stack);
 						}
 					}
 					if ((name == null) || (name.length() == 0)) {
 						String originalpos = IDResolver
-								.GetInfoFromSaveString(IDEntry)[0];
+								.getInfoFromSaveString(IDEntry)[0];
 						if (isBlock) {
 							name = "Unnamed "
-									+ IDResolver.TrimMCP(Block.blocksList[x]
+									+ IDResolver.trimMCP(Block.blocksList[x]
 											.getClass().getName())
 									+ " originally at " + originalpos;
 						} else {
 							name = "Unnamed "
-									+ IDResolver.TrimMCP(Item.itemsList[x]
+									+ IDResolver.trimMCP(Item.itemsList[x]
 											.getClass().getName())
 									+ " originally at " + originalpos;
 						}
 					}
 				} else {
-					String[] info = IDResolver.GetInfoFromSaveString(IDEntry);
+					String[] info = IDResolver.getInfoFromSaveString(IDEntry);
 					name = "Loose setting for "
-							+ (isBlock ? "Block '" : "Item with original ID ") + info[0]
-							+ " loaded from " + info[1];
+							+ (isBlock ? "Block '" : "Item with original ID ")
+							+ info[0] + " loaded from " + info[1];
 				}
 				window.add(GuiApiHelper.makeButton("Edit ID for " + name,
-						"ResolveNewID", IDResolver.class, true,
+						"resolveNewID", IDResolver.class, true,
 						new Class[] { String.class }, IDEntry));
 			}
 			IDResolver.windows[id] = new WidgetSimplewindow(window,
 					"Config IDs for " + entry.getKey());
-			IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton(
-					"View IDs for " + entry.getKey(), "ShowMenu",
+			IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+					"View IDs for " + entry.getKey(), "showMenu",
 					IDResolver.class, true, new Class[] { Integer.class }, id));
 			id++;
 		}
-		IDResolver.UpdateTickSettings();
+		IDResolver.updateTickSettings();
 		Runnable callback = new ModAction(IDResolver.class,
-				"UpdateTickSettings");
+				"updateTickSettings");
 		WidgetBoolean TickMWidget = new WidgetBoolean(IDResolver.showTickMM,
 				"Show ID info on Main Menu");
 		TickMWidget.button.addCallback(callback);
-		IDResolver.modscreen.widgetColumn.add(TickMWidget);
+		IDResolver.modScreen.widgetColumn.add(TickMWidget);
 		TickMWidget = new WidgetBoolean(IDResolver.showTickRS,
 				"Show ID info on Resolve Screen");
 		TickMWidget.button.addCallback(callback);
-		IDResolver.modscreen.widgetColumn.add(TickMWidget);
+		IDResolver.modScreen.widgetColumn.add(TickMWidget);
 		TickMWidget = new WidgetBoolean(IDResolver.checkForLooseSettings,
 				"Check for Loose settings");
 		TickMWidget.button.addCallback(callback);
-		IDResolver.modscreen.widgetColumn.add(TickMWidget);
+		IDResolver.modScreen.widgetColumn.add(TickMWidget);
 		TickMWidget = new WidgetBoolean(IDResolver.showOnlyConf,
 				"Only Show Conflicts");
 		TickMWidget.button.addCallback(callback);
-		IDResolver.modscreen.widgetColumn.add(TickMWidget);
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Wipe ALL Saved IDs", "ClearAllIDs",
+		IDResolver.modScreen.widgetColumn.add(TickMWidget);
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Wipe ALL Saved IDs", "clearAllIDs", IDResolver.class, true));
+		IDResolver.modScreen.widgetColumn
+				.add(GuiApiHelper.makeButton("Check for Loose IDs",
+						"checkLooseIDs", IDResolver.class, true));
+
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Generate ID Status Report", "saveIDStatusToFile",
+				IDResolver.class, true, new Class[] { Integer.class }, 0));
+
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Generate ID Status Report with Expanded Free IDs",
+				"saveIDStatusToFile", IDResolver.class, true,
+				new Class[] { Integer.class }, 1));
+
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Generate ID Status Report with Collapsed Free IDs",
+				"saveIDStatusToFile", IDResolver.class, true,
+				new Class[] { Integer.class }, 2));
+
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Display ID Status Report", "displayIDStatus",
 				IDResolver.class, true));
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Check for Loose IDs",
-				"CheckLooseIDs", IDResolver.class, true));
-		
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Generate ID Status Report",
-				"SaveIDStatusToFile", IDResolver.class, true,new Class[]{Integer.class},0));
-		
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Generate ID Status Report with Expanded Free IDs",
-				"SaveIDStatusToFile", IDResolver.class, true,new Class[]{Integer.class},1));
-		
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Generate ID Status Report with Collapsed Free IDs",
-				"SaveIDStatusToFile", IDResolver.class, true,new Class[]{Integer.class},2));
-		
 
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Display ID Status Report",
-				"DisplayIDStatus", IDResolver.class, true));
-
-		IDResolver.modscreen.widgetColumn.add(GuiApiHelper.makeButton("Reload Options",
-				"ReLoadModGuiAndRefresh", IDResolver.class, true));
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Reload Options", "reLoadModGuiAndRefresh", IDResolver.class,
+				true));
 	}
 
 	@SuppressWarnings("unused")
-	private static void ReLoadModGuiAndRefresh() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void reLoadModGuiAndRefresh() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'ReLoadModGuiAndRefresh' button.");
 		GuiModScreen.back();
-		IDResolver.ReLoadModGui();
-		GuiModScreen.show(IDResolver.modscreen.theWidget);
+		IDResolver.reLoadModGui();
+		GuiModScreen.show(IDResolver.modScreen.theWidget);
 	}
 
 	@SuppressWarnings("unused")
-	private static void RemoveEntry(String key) {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void removeEntry(String key) {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'RemoveEntry' button for " + key);
 		IDResolver.knownIDs.remove(key);
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 			IDResolver.logger.log(Level.INFO,
 					"IDResolver - Removed the saved ID for " + key
 							+ " as per use request via Settings screen.");
@@ -1447,11 +1466,11 @@ public class IDResolver implements Runnable {
 					"IDResolver - Was unable to remove the saved ID for " + key
 							+ " due to an exception.", e);
 		}
-		IDResolver.ReLoadModGui();
+		IDResolver.reLoadModGui();
 	}
 
 	@SuppressWarnings("unused")
-	private static void RemoveLooseSetting(SettingList setting) {
+	private static void removeLooseSetting(SettingList setting) {
 		int selected = ((WidgetList) setting.displayWidget).listBox
 				.getSelected();
 		if (selected == -1) {
@@ -1475,73 +1494,65 @@ public class IDResolver implements Runnable {
 			GuiModScreen.back();
 		}
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO, "Could not save properties", e);
 		}
-		IDResolver.ReLoadModGui();
+		IDResolver.reLoadModGui();
 	}
 
-	public static void RemoveSettingByKey(String key) {
+	public static void removeSettingByKey(String key) {
 		if (IDResolver.knownIDs.containsKey(key)) {
 			IDResolver.knownIDs.remove(key);
 		}
 	}
 
 	@SuppressWarnings("unused")
-	private static void ResolveNewID(String key) {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void resolveNewID(String key) {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'ResolveNewID' button for " + key);
 		if (!IDResolver.knownIDs.containsKey(key)) {
 			return;
 		}
-		String trimmedKey = TrimType(key, IDResolver.IsBlockType(key));
+		String trimmedKey = IDResolver.trimType(key,
+				IDResolver.isBlockType(key));
 		IDResolver resolver = new IDResolver(Integer.parseInt(IDResolver
-				.GetInfoFromSaveString(trimmedKey)[0]), key);
+				.getInfoFromSaveString(trimmedKey)[0]), key);
 		resolver.disableAutoAll = true;
 		resolver.isMenu = true;
-		resolver.SetupGui(Integer.parseInt(IDResolver.knownIDs.getProperty(key)));
-		resolver.RunConflictMenu();
+		resolver.setupGui(Integer.parseInt(IDResolver.knownIDs.getProperty(key)));
+		resolver.runConflictMenu();
 	}
-	
+
 	@SuppressWarnings("unused")
-	private static void LinkCallback(String url)
-	{
-		IDResolver.GetLogger().log(Level.INFO,
-				"IDResolver - User pressed link. URL is: " + url);
-		File file = new File(url);
-		try {
-			Desktop.getDesktop().open(file);
-		}
-		catch (Throwable e) {
-			e.printStackTrace();
-			Sys.openURL(file.toURI().toString());
-		}
-	}
-	
-	@SuppressWarnings("unused")
-	private static void SaveIDStatusToFile(Integer showFree) {
-		IDResolver.GetLogger().log(Level.INFO,
-				"IDResolver - User pressed 'SaveIDStatusToFile' button. Mode: " + showFree.toString());
-		File savePath = new File(new File(Minecraft.getMinecraftDir(), "ID Status.txt").getAbsolutePath().replace("\\.\\", "\\"));
+	private static void saveIDStatusToFile(Integer showFree) {
+		IDResolver.getLogger().log(
+				Level.INFO,
+				"IDResolver - User pressed 'SaveIDStatusToFile' button. Mode: "
+						+ showFree.toString());
+		File savePath = new File(new File(Minecraft.getMinecraftDir(),
+				"ID Status.txt").getAbsolutePath().replace("\\.\\", "\\"));
 		try {
 			FileOutputStream output = new FileOutputStream(savePath);
-			output.write(IDResolver.GenerateIDStatusReport(showFree).getBytes());
+			output.write(IDResolver.generateIDStatusReport(showFree).getBytes());
 			output.flush();
 			output.close();
-			
+
 			WidgetSinglecolumn widget = new WidgetSinglecolumn(new Widget[0]);
-			TextArea area = GuiApiHelper.makeTextArea(String.format("Saved ID status report to <a href=\"%1$s\">%1$s</a>", savePath), true);
-			area.addCallback(new ModAction(IDResolver.class,"LinkCallback","Link Clicked Callback",String.class));
+			TextArea area = GuiApiHelper.makeTextArea(String.format(
+					"Saved ID status report to <a href=\"%1$s\">%1$s</a>",
+					savePath), true);
+			area.addCallback(new ModAction(IDResolver.class, "linkCallback",
+					"Link Clicked Callback", String.class));
 			widget.add(area);
 			widget.overrideHeight = false;
-			WidgetSimplewindow window = new WidgetSimplewindow(widget, "ID Resolver");
+			WidgetSimplewindow window = new WidgetSimplewindow(widget,
+					"ID Resolver");
 			window.backButton.setText("OK");
-			
-			
+
 			GuiModScreen.show(window);
 		} catch (Throwable e) {
-			IDResolver.GetLogger().log(Level.INFO,
+			IDResolver.getLogger().log(Level.INFO,
 					"IDResolver - Exception when saving ID Status to file.", e);
 			StringWriter sw = new StringWriter();
 			PrintWriter pw = new PrintWriter(sw);
@@ -1554,41 +1565,41 @@ public class IDResolver implements Runnable {
 							+ ", exception was:\r\n\r\n" + trace, "OK", false));
 		}
 	}
-	
-	private static void SetupOverrides() {
+
+	private static void setupOverrides() {
 		int pubfinalmod = Modifier.FINAL + Modifier.PUBLIC;
 		try {
 			for (Field field : Block.class.getFields()) {
 				if ((field.getModifiers() == pubfinalmod)
 						&& (field.getType() == int.class)) {
-					IDResolver.blockidfield = field;
+					IDResolver.blockIdField = field;
 					break;
 				}
 			}
 		} catch (Throwable e3) {
-			IDResolver.overridesenabled = false;
+			IDResolver.overridesEnabled = false;
 		}
 
 		try {
 			for (Field field : Item.class.getFields()) {
 				if ((field.getModifiers() == pubfinalmod)
 						&& (field.getType() == int.class)) {
-					IDResolver.itemidfield = field;
+					IDResolver.itemIdField = field;
 					break;
 				}
 			}
 		} catch (Throwable e3) {
-			IDResolver.overridesenabled = false;
+			IDResolver.overridesEnabled = false;
 		}
-		if (IDResolver.overridesenabled) {
-			IDResolver.blockidfield.setAccessible(true);
-			IDResolver.itemidfield.setAccessible(true);
+		if (IDResolver.overridesEnabled) {
+			IDResolver.blockIdField.setAccessible(true);
+			IDResolver.itemIdField.setAccessible(true);
 		}
 	}
 
 	@SuppressWarnings("unused")
-	private static void ShowMenu(Integer i) {
-		IDResolver.GetLogger().log(
+	private static void showMenu(Integer i) {
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - User pressed 'ShowMenu' button for "
 						+ i.toString() + " aka "
@@ -1597,11 +1608,11 @@ public class IDResolver implements Runnable {
 		GuiModScreen.show(IDResolver.windows[i]);
 	}
 
-	private static boolean ShowOnlyConflicts() {
+	private static boolean showOnlyConflicts() {
 		if (!IDResolver.modPriorities.containsKey("ShowOnlyConflicts")) {
 			IDResolver.modPriorities.setProperty("ShowOnlyConflicts", "true");
 			try {
-				IDResolver.StoreProperties();
+				IDResolver.storeProperties();
 			} catch (Throwable e) {
 				IDResolver.logger
 						.log(Level.INFO,
@@ -1614,12 +1625,12 @@ public class IDResolver implements Runnable {
 				.equalsIgnoreCase("true");
 	}
 
-	public static boolean ShowTick(boolean mainmenu) {
+	public static boolean showTick(boolean mainmenu) {
 		String key = mainmenu ? "ShowTickMM" : "ShowTickRS";
 		if (!IDResolver.modPriorities.containsKey(key)) {
 			IDResolver.modPriorities.setProperty(key, "true");
 			try {
-				IDResolver.StoreProperties();
+				IDResolver.storeProperties();
 			} catch (Throwable e) {
 				IDResolver.logger.log(Level.INFO,
 						"Could not save properties after adding " + key
@@ -1631,10 +1642,10 @@ public class IDResolver implements Runnable {
 				"true");
 	}
 
-	private static void StoreProperties() throws FileNotFoundException,
+	private static void storeProperties() throws FileNotFoundException,
 			IOException {
 		FileOutputStream stream = new FileOutputStream(IDResolver.idPath);
-		IDResolver.knownIDs.setProperty("SAVEVERSION","v2");
+		IDResolver.knownIDs.setProperty("SAVEVERSION", "v2");
 		IDResolver.knownIDs.store(stream, IDResolver.settingsComment);
 		stream.close();
 		stream = new FileOutputStream(IDResolver.priorityPath);
@@ -1642,8 +1653,45 @@ public class IDResolver implements Runnable {
 		stream.close();
 	}
 
+	private static void syncMinecraftScreen(Minecraft mc,
+			GuiWidgetScreen widgetscreen) {
+		mc.displayWidth = mc.mcCanvas.getWidth();
+		mc.displayHeight = mc.mcCanvas.getHeight();
+		widgetscreen.layout();
+		RenderScale.scale = widgetscreen.screenSize.scaleFactor;
+		GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
+		widgetscreen.renderer.syncViewportSize();
+	}
+
 	@SuppressWarnings("unused")
-	private static void TrimLooseSettings(ArrayList<String> unused) {
+	private static void tickIDSubItem(WidgetItem2DRender renderer,
+			TextArea textArea, Label label) {
+		ItemStack stack = renderer.getRenderStack();
+		int damage = stack.getItemDamage();
+		damage++;
+		if (damage > 15) {
+			damage = 0;
+		}
+		stack.setItemDamage(damage);
+
+		Item item = stack.getItem();
+		String stackName = IDResolver.getItemNameForStack(stack);
+		StringBuilder tooltipText = new StringBuilder(String.format(
+				"Slot %-4s : Metadata %s: %s", stack.itemID, damage,
+				StringTranslate.getInstance().translateNamedKey(stackName)));
+
+		tooltipText.append(String
+				.format("\r\n\r\nInternal name: %s", stackName));
+
+		IDResolver.buildItemInfo(tooltipText, stack.itemID, IDResolver
+				.getExistance(IDResolver.getPosition(stack.itemID),
+						stack.itemID) == 1);
+
+		GuiApiHelper.setTextAreaText(textArea, tooltipText.toString());
+	}
+
+	@SuppressWarnings("unused")
+	private static void trimLooseSettings(ArrayList<String> unused) {
 		WidgetSinglecolumn widgetSingleColumn = new WidgetSinglecolumn();
 		widgetSingleColumn.childDefaultWidth = 250;
 		SettingList s = new SettingList("unusedSettings", unused);
@@ -1652,7 +1700,7 @@ public class IDResolver implements Runnable {
 		widgetSingleColumn.add(w);
 		widgetSingleColumn.heightOverrideExceptions.put(w, 140);
 		widgetSingleColumn.add(GuiApiHelper.makeButton("Remove Selected",
-				"RemoveLooseSetting", IDResolver.class, true,
+				"removeLooseSetting", IDResolver.class, true,
 				new Class[] { SettingList.class }, s));
 
 		GuiModScreen.show(new WidgetSimplewindow(widgetSingleColumn,
@@ -1660,23 +1708,23 @@ public class IDResolver implements Runnable {
 	}
 
 	@SuppressWarnings("unused")
-	private static void TrimLooseSettingsAll(ArrayList<String> unused) {
+	private static void trimLooseSettingsAll(ArrayList<String> unused) {
 		for (String key : unused) {
 			IDResolver.knownIDs.remove(key);
 			IDResolver.logger.log(Level.INFO, "Trimmed ID: " + key);
 		}
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO,
 					"Could not save properties after trimming loose settings!",
 					e);
 		}
-		IDResolver.ReLoadModGui();
+		IDResolver.reLoadModGui();
 	}
 
 	@SuppressWarnings("unused")
-	private static void TrimLooseSettingsAuto(ArrayList<String> unused) {
+	private static void trimLooseSettingsAuto(ArrayList<String> unused) {
 		Map<String, Boolean> classMap = new HashMap<String, Boolean>();
 		ArrayList<Class> loadedMods = new ArrayList<Class>(ModLoader
 				.getLoadedMods().size());
@@ -1687,7 +1735,7 @@ public class IDResolver implements Runnable {
 		Boolean isMCP = IDResolver.class.getName().startsWith(
 				"net.minecraft.src.");
 		for (String key : unused) {
-			String[] info = IDResolver.GetInfoFromSaveString(key);
+			String[] info = IDResolver.getInfoFromSaveString(key);
 			String classname = info[1];
 			if (!classMap.containsKey(classname)) {
 				try {
@@ -1700,7 +1748,7 @@ public class IDResolver implements Runnable {
 					}
 					if (!loadedMods.contains(modClass)) {
 						IDResolver
-								.AppendExtraInfo("Unsure if I should trim IDs from "
+								.appendExtraInfo("Unsure if I should trim IDs from "
 										+ classname
 										+ ": Class file is still found, but the mod is not loaded into ModLoader! If you wish to trim these IDs, please remove them with the Settings screen.");
 					}
@@ -1715,23 +1763,23 @@ public class IDResolver implements Runnable {
 			}
 		}
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO,
 					"Could not save properties after trimming loose settings!",
 					e);
 		}
-		IDResolver.ReLoadModGui();
+		IDResolver.reLoadModGui();
 	}
 
-	private static String TrimMCP(String name) {
+	private static String trimMCP(String name) {
 		if (name.startsWith("net.minecraft.src")) {
 			name = name.substring(18);
 		}
 		return name;
 	}
 
-	private static String TrimType(String input, boolean block) {
+	private static String trimType(String input, boolean block) {
 		String type = (block ? "BlockID." : "ItemID.");
 		if (input.startsWith(type)) {
 			return input.substring(type.length());
@@ -1739,8 +1787,8 @@ public class IDResolver implements Runnable {
 		return input;
 	}
 
-	private static void UpdateTickSettings() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private static void updateTickSettings() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - 'UpdateTickSettings' called.");
 		if (IDResolver.modPriorities.containsKey("ShowTickMM")) {
 			IDResolver.modPriorities.remove("ShowTickMM");
@@ -1765,38 +1813,42 @@ public class IDResolver implements Runnable {
 		IDResolver.modPriorities.setProperty("ShowOnlyConflicts",
 				IDResolver.showOnlyConf.get().toString());
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO,
 					"IDResolver - Was unable to save settings.", e);
 		}
 	}
 
-	public static Boolean WasBlockInited() {
+	public static Boolean wasBlockInited() {
 		return IDResolver.wasBlockInited;
 	}
 
-	public static Boolean WasItemInited() {
+	public static Boolean wasItemInited() {
 		return IDResolver.wasItemInited;
 	}
 
 	@SuppressWarnings("unused")
-	private static void WipeSavedIDsFromMenu(String modName) {
-		IDResolver.GetLogger().log(
+	private static void wipeSavedIDsFromMenu(String modName) {
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - User pressed 'WipeSavedIDsFromMenu' button with "
 						+ modName);
 		Vector<String> temp = new Vector<String>();
 		for (Object key : IDResolver.knownIDs.keySet()) {
-			temp.add((String) key);
+			String string = (String) key;
+			if ("SAVEVERSION".equals(key)) {
+				continue;
+			}
+			temp.add(string);
 		}
 		for (String key : temp) {
-			if (IDResolver.GetInfoFromSaveString(key)[1].equals(modName)) {
+			if (IDResolver.getInfoFromSaveString(key)[1].equals(modName)) {
 				IDResolver.knownIDs.remove(key);
 			}
 		}
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO, "Could not save properties", e);
 		}
@@ -1804,7 +1856,6 @@ public class IDResolver implements Runnable {
 	}
 
 	private boolean disableAutoAll = false;
-
 	private boolean disableOverride = false;
 
 	private boolean isBlock = true;
@@ -1816,7 +1867,6 @@ public class IDResolver implements Runnable {
 	private Widget oldsubscreenIDSetter;
 
 	private int originalID;
-
 	private String overrideName;
 	private boolean overridingSetting = false;
 	private Block requestedBlock;
@@ -1824,6 +1874,7 @@ public class IDResolver implements Runnable {
 	private Button resolveScreenContinue;
 	private TextArea resolveScreenLabel;
 	private Button resolveScreenOverride;
+
 	private boolean running = false;
 
 	private SettingInt settingIntNewID;
@@ -1838,7 +1889,7 @@ public class IDResolver implements Runnable {
 			requestedBlock = Offender;
 		}
 		originalID = Startid;
-		longName = IDResolver.GetlongName(requestedBlock, originalID);
+		longName = IDResolver.getlongName(requestedBlock, originalID);
 	}
 
 	private IDResolver(int Startid, Item Offender) {
@@ -1850,14 +1901,14 @@ public class IDResolver implements Runnable {
 			requestedItem = Offender;
 		}
 		originalID = Startid;
-		longName = IDResolver.GetlongName(requestedItem, originalID);
+		longName = IDResolver.getlongName(requestedItem, originalID);
 	}
 
 	private IDResolver(int currentID, String savedname) {
 		if (IDResolver.initialized) {
-			isBlock = IDResolver.IsBlockType(savedname);
-			String[] info = IDResolver.GetInfoFromSaveString(IDResolver
-					.TrimType(savedname, isBlock));
+			isBlock = IDResolver.isBlockType(savedname);
+			String[] info = IDResolver.getInfoFromSaveString(IDResolver
+					.trimType(savedname, isBlock));
 			overrideName = "ID " + info[0] + " from " + info[1];
 			longName = savedname;
 			originalID = currentID;
@@ -1867,27 +1918,27 @@ public class IDResolver implements Runnable {
 	private IDResolver(String name, boolean block) {
 		if (IDResolver.initialized) {
 			isBlock = block;
-			String[] info = IDResolver.GetInfoFromSaveString(name);
+			String[] info = IDResolver.getInfoFromSaveString(name);
 			overrideName = "ID " + info[0] + " from " + info[1];
 		}
 	}
 
 	@SuppressWarnings("unused")
-	private void AutoAssign() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void autoAssign() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'AutoAssign' button.");
-		AutoAssign(false, false);
+		autoAssign(false, false);
 	}
 
-	private void AutoAssign(boolean skipMessage, boolean reverse) {
-		IDResolver.GetLogger().log(
+	private void autoAssign(boolean skipMessage, boolean reverse) {
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - Automatically assigning ID: Skip Message: "
 						+ skipMessage + " Reverse: " + reverse);
-		int firstid = (isBlock ? (reverse ? IDResolver.GetLastOpenBlock()
-				: IDResolver.GetFirstOpenBlock()) : (reverse ? IDResolver
-				.GetLastOpenItem() : IDResolver.GetFirstOpenItem()));
-		IDResolver.GetLogger().log(Level.INFO,
+		int firstid = (isBlock ? (reverse ? IDResolver.getLastOpenBlock()
+				: IDResolver.getFirstOpenBlock()) : (reverse ? IDResolver
+				.getLastOpenItem() : IDResolver.getFirstOpenItem()));
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - Automatic assign returned new ID " + firstid);
 		if (firstid == -1) {
 			return;
@@ -1896,181 +1947,175 @@ public class IDResolver implements Runnable {
 		if (skipMessage) {
 			running = false;
 		} else {
-			DisplayMessage("Automatically assigned ID "
-					+ Integer.toString(firstid) + " for " + GetName());
+			displayMessage("Automatically assigned ID "
+					+ Integer.toString(firstid) + " for " + getName());
 		}
 	}
 
 	@SuppressWarnings("unused")
-	private void AutoAssignAll() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void autoAssignAll() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'AutoAssignAll' button.");
-		IDResolver.autoAssignMod = IDResolver.GetInfoFromSaveString(longName)[1];
-		AutoAssign(true, false);
-		DisplayMessage("Automatically assigning IDs...");
+		IDResolver.autoAssignMod = IDResolver.getInfoFromSaveString(longName)[1];
+		autoAssign(true, false);
+		displayMessage("Automatically assigning IDs...");
 	}
 
 	@SuppressWarnings("unused")
-	private void AutoAssignAllRev() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void autoAssignAllRev() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'AutoAssignAllRev' button.");
 		IDResolver.autoAssignMod = "!"
-				+ IDResolver.GetInfoFromSaveString(longName)[1];
-		AutoAssign(true, true);
-		DisplayMessage("Automatically assigning IDs...");
+				+ IDResolver.getInfoFromSaveString(longName)[1];
+		autoAssign(true, true);
+		displayMessage("Automatically assigning IDs...");
 	}
 
 	@SuppressWarnings("unused")
-	private void AutoAssignRev() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void autoAssignRev() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'AutoAssignRev' button.");
-		AutoAssign(false, true);
+		autoAssign(false, true);
 	}
 
 	@SuppressWarnings("unused")
-	private void Cancel() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void cancel() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'Cancel' button.");
 		settingIntNewID = null;
 		running = false;
 	}
 
-	private void DisplayMessage(String msg) {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void displayMessage(String msg) {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - Message Displayed: " + msg);
 		oldsubscreenIDSetter = subscreenIDSetter;
-		
-		
-		
-		WidgetSinglecolumn column =  new WidgetSinglecolumn(new Widget[0]);
+
+		WidgetSinglecolumn column = new WidgetSinglecolumn(new Widget[0]);
 		{
 			TextArea textarea = GuiApiHelper.makeTextArea(msg, false);
 			column.add(textarea);
 			column.heightOverrideExceptions.put(textarea, 0);
-			column.add(GuiApiHelper.makeButton("Continue", "Finish", this, true));
+			column.add(GuiApiHelper
+					.makeButton("Continue", "finish", this, true));
 		}
-		
-		WidgetSimplewindow window = new WidgetSimplewindow(column,"ID Resolver Notice",false);
-		
+
+		WidgetSimplewindow window = new WidgetSimplewindow(column,
+				"ID Resolver Notice", false);
+
 		WidgetTick ticker = new WidgetTick();
 		window.add(ticker);
-		ticker.addTimedCallback(new ModAction(this,"PreviousScreen"),5000);
-		
+		ticker.addTimedCallback(new ModAction(this, "previousScreen"), 5000);
+
 		subscreenIDSetter = window;
-		
+
 		GuiWidgetScreen screen = GuiWidgetScreen.getInstance();
 		screen.resetScreen();
 		screen.setScreen(subscreenIDSetter);
-		
-		LoadBackground(screen);
-	}
-	
-	@SuppressWarnings("unused")
-	private void PreviousScreen()
-	{
-		subscreenIDSetter = oldsubscreenIDSetter;
-		running = false;
+
+		loadBackground(screen);
 	}
 
 	@SuppressWarnings("unused")
-	private void Finish() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void finish() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'Finish' button.");
 		running = false;
 	}
 
-	private String GetBlockName(Block block) {
+	private String getBlockName(Block block) {
 		try {
 			String name = StringTranslate.getInstance().translateNamedKey(
-					IDResolver.GetItemNameForStack(new ItemStack(block)));
+					IDResolver.getItemNameForStack(new ItemStack(block)));
 			if ((name != null) && (name.length() != 0)) {
 				return name;
 			}
-			if (!IDResolver.IntHasStoredID(block.blockID, true)) {
-				return IDResolver.GetItemNameForStack(new ItemStack(block));
+			if (!IDResolver.intHasStoredID(block.blockID, true)) {
+				return IDResolver.getItemNameForStack(new ItemStack(block));
 			}
 		} catch (Throwable e) {
 		}
-		String[] info = IDResolver.GetInfoFromSaveString((IDResolver
-				.IntHasStoredID(block.blockID, true) ? IDResolver
-				.GetStoredIDName(block.blockID, true, true) : IDResolver
-				.GetLongBlockName(block, originalID)));
-		return "ID " + info[0] + " (Class: " + block.getClass().getName() + ") from " + info[1];
+		String[] info = IDResolver.getInfoFromSaveString((IDResolver
+				.intHasStoredID(block.blockID, true) ? IDResolver
+				.getStoredIDName(block.blockID, true, true) : IDResolver
+				.getLongBlockName(block, originalID)));
+		return "ID " + info[0] + " (Class: " + block.getClass().getName()
+				+ ") from " + info[1];
 	}
 
-	private String GetItemName(Item item) {
+	private String getItemName(Item item) {
 		try {
 			String name = StringTranslate.getInstance().translateNamedKey(
-					IDResolver.GetItemNameForStack(new ItemStack(item)));
+					IDResolver.getItemNameForStack(new ItemStack(item)));
 			if ((name != null) && (name.length() != 0)) {
 				return name;
 			}
-			if (!IDResolver.IntHasStoredID(item.shiftedIndex, true)) {
-				return IDResolver.GetItemNameForStack(new ItemStack(item));
+			if (!IDResolver.intHasStoredID(item.shiftedIndex, true)) {
+				return IDResolver.getItemNameForStack(new ItemStack(item));
 			}
 		} catch (Throwable e) {
 		}
-		String[] info = IDResolver.GetInfoFromSaveString((IDResolver
-				.IntHasStoredID(item.shiftedIndex, false) ? IDResolver
-				.GetStoredIDName(item.shiftedIndex, false, true) : IDResolver
-				.GetLongItemName(item, originalID)));
-		return "ID " + info[0] + " (Class: " + item.getClass().getName() + ") from " + info[1];
+		String[] info = IDResolver.getInfoFromSaveString((IDResolver
+				.intHasStoredID(item.shiftedIndex, false) ? IDResolver
+				.getStoredIDName(item.shiftedIndex, false, true) : IDResolver
+				.getLongItemName(item, originalID)));
+		return "ID " + info[0] + " (Class: " + item.getClass().getName()
+				+ ") from " + info[1];
 	}
 
-	private String GetName() {
+	private String getName() {
 		String name = "";
 		if (overrideName != null) {
 			return overrideName;
 		}
 		if (isBlock) {
 			if (requestedBlock != null) {
-				name = GetBlockName(requestedBlock);
+				name = getBlockName(requestedBlock);
 			} else {
-				String[] info = IDResolver.GetInfoFromSaveString(IDResolver
-						.GetStoredIDName(originalID, true));
+				String[] info = IDResolver.getInfoFromSaveString(IDResolver
+						.getStoredIDName(originalID, true));
 				name = "ID " + info[0] + " from " + info[1];
 			}
 		} else {
 			if (requestedItem != null) {
-				name = GetItemName(requestedItem);
+				name = getItemName(requestedItem);
 			} else {
-				String[] info = IDResolver.GetInfoFromSaveString(IDResolver
-						.GetStoredIDName(originalID, false));
+				String[] info = IDResolver.getInfoFromSaveString(IDResolver
+						.getStoredIDName(originalID, false));
 				name = "ID " + info[0] + " from " + info[1];
 			}
 		}
-		if(name == null || "".equals(name))
-		{
+		if ((name == null) || "".equals(name)) {
 			name = longName;
 		}
 		return name;
 	}
 
-	private int GetStored() {
+	private int getStored() {
 		return Integer.parseInt(IDResolver.knownIDs.getProperty(longName));
 	}
 
-	private String GetTypeName() {
-		return IDResolver.GetTypeName(isBlock);
+	private String getTypeName() {
+		return IDResolver.getTypeName(isBlock);
 	}
 
-	private boolean HasOpenSlot() {
-		return ((isBlock ? IDResolver.GetFirstOpenBlock() : IDResolver
-				.GetFirstOpenItem()) != -1) || specialItem;
+	private boolean hasOpenSlot() {
+		return ((isBlock ? IDResolver.getFirstOpenBlock() : IDResolver
+				.getFirstOpenItem()) != -1) || specialItem;
 	}
 
-	private boolean HasStored() {
+	private boolean hasStored() {
 		return IDResolver.knownIDs.containsKey(longName);
 	}
 
 	@SuppressWarnings("unused")
-	private void ItemForceOverwrite() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void itemForceOverwrite() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'ItemForceOverwrite' button.");
 		running = false;
 	}
 
-	private void LoadBackground(GuiWidgetScreen widgetscreen) {
+	private void loadBackground(GuiWidgetScreen widgetscreen) {
 		try {
 			Texture tex = widgetscreen.renderer.load(Minecraft.class
 					.getClassLoader().getResource("gui/background.png"),
@@ -2087,35 +2132,35 @@ public class IDResolver implements Runnable {
 	}
 
 	@SuppressWarnings("unused")
-	private void MenuDeleteSavedID() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void menuDeleteSavedID() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'MenuDeleteSavedID' button.");
-		String oldname = IDResolver.GetStoredIDName(settingIntNewID.get(),
+		String oldname = IDResolver.getStoredIDName(settingIntNewID.get(),
 				isBlock, false);
 		IDResolver.knownIDs.remove(oldname);
 		settingIntNewID = null;
 		running = false;
 		try {
-			IDResolver.StoreProperties();
+			IDResolver.storeProperties();
 		} catch (Throwable e) {
 			IDResolver.logger.log(Level.INFO,
 					"IDResolver - Was unable to store settings for "
-							+ GetTypeName() + " " + GetName()
+							+ getTypeName() + " " + getName()
 							+ " due to an exception.", e);
 		}
 	}
 
 	@SuppressWarnings("unused")
-	private void OverrideOld() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void overrideOld() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'OverrideOld' button.");
 		overridingSetting = true;
 		Integer ID = settingIntNewID.get();
 		if ((isBlock && (Block.blocksList[ID] == null))
 				|| (!isBlock && (Item.itemsList[ID] == null))) {
 
-			DisplayMessage("Override requested for "
-					+ GetTypeName()
+			displayMessage("Override requested for "
+					+ getTypeName()
 					+ " at slot "
 					+ ID
 					+ ", but it is currently just a setting. Overriding now, IDResolver will ask later for the new block ID.");
@@ -2124,7 +2169,13 @@ public class IDResolver implements Runnable {
 		}
 	}
 
-	private void PriorityConflict(String newobject, String oldobject,
+	@SuppressWarnings("unused")
+	private void previousScreen() {
+		subscreenIDSetter = oldsubscreenIDSetter;
+		running = false;
+	}
+
+	private void priorityConflict(String newobject, String oldobject,
 			Boolean isTypeBlock) {
 		oldsubscreenIDSetter = subscreenIDSetter;
 		subscreenIDSetter = new WidgetSinglecolumn(new Widget[0]);
@@ -2134,27 +2185,29 @@ public class IDResolver implements Runnable {
 			model.setText(
 					String.format(
 							"There is a mod priority conflict for a %s between two mods. Both has the same priority set. Please select which should take priority.",
-							IDResolver.GetTypeName(isTypeBlock)), false);
+							IDResolver.getTypeName(isTypeBlock)), false);
 			TextArea textarea = new TextArea(model);
 			subscreenIDSetter.add(textarea);
 			((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions
 					.put(textarea, 0);
-			String[] info = IDResolver.GetInfoFromSaveString(newobject);
-			subscreenIDSetter.add(GuiApiHelper.makeButton("ID " + info[0] + " from " + info[1], "PriorityResolver", this, true,
+			String[] info = IDResolver.getInfoFromSaveString(newobject);
+			subscreenIDSetter.add(GuiApiHelper.makeButton("ID " + info[0]
+					+ " from " + info[1], "priorityResolver", this, true,
 					new Class[] { Boolean.class }, true));
-			info = IDResolver.GetInfoFromSaveString(oldobject);
-			subscreenIDSetter.add(GuiApiHelper.makeButton("ID " + info[0] + " from " + info[1], "PriorityResolver", this, true,
+			info = IDResolver.getInfoFromSaveString(oldobject);
+			subscreenIDSetter.add(GuiApiHelper.makeButton("ID " + info[0]
+					+ " from " + info[1], "priorityResolver", this, true,
 					new Class[] { Boolean.class }, false));
 		}
 		GuiWidgetScreen screen = GuiWidgetScreen.getInstance();
 		screen.resetScreen();
 		screen.setScreen(subscreenIDSetter);
-		LoadBackground(screen);
+		loadBackground(screen);
 	}
 
 	@SuppressWarnings("unused")
-	private void PriorityResolver(Boolean overrideold) {
-		IDResolver.GetLogger().log(
+	private void priorityResolver(Boolean overrideold) {
+		IDResolver.getLogger().log(
 				Level.INFO,
 				"IDResolver - User pressed 'PriorityResolver' button with "
 						+ overrideold.toString());
@@ -2166,65 +2219,73 @@ public class IDResolver implements Runnable {
 			GuiWidgetScreen widgetscreen = GuiWidgetScreen.getInstance();
 			widgetscreen.resetScreen();
 			widgetscreen.setScreen(subscreenIDSetter);
-			LoadBackground(widgetscreen);
+			loadBackground(widgetscreen);
 		}
 	}
 
 	@SuppressWarnings("unused")
-	private void RaisePriorityAndOK() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void raisePriorityAndOK() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'RaisePriorityAndOK' button.");
-		String modname = IDResolver.GetInfoFromSaveString(longName)[1];
-		DisplayMessage(modname + " is now specified as a Priority Mod Level "
-				+ IDResolver.RaiseModPriority(modname));
+		String modname = IDResolver.getInfoFromSaveString(longName)[1];
+		displayMessage(modname + " is now specified as a Priority Mod Level "
+				+ IDResolver.raiseModPriority(modname));
 	}
 
 	@SuppressWarnings("unused")
-	private void ResetIDtoDefault() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void resetIDtoDefault() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'ResetIDtoDefault' button.");
 		settingIntNewID.set(originalID);
-		run();
+		updateUI();
 	}
-	
-	
 
-	@Override
-	public void run() {
+	private void updateUI() {
 		int ID = settingIntNewID.get();
 		String Name = null;
 		try {
 			if (isBlock) {
 				Block selectedBlock = Block.blocksList[ID];
 				if (selectedBlock != null) {
-					Name = GetBlockName(selectedBlock);
+					Name = getBlockName(selectedBlock);
 				}
-			} else {
+			}
+			if (Name == null) {
 				Item selectedItem = Item.itemsList[ID];
 				if (selectedItem != null) {
-					Name = GetItemName(selectedItem);
+					Name = getItemName(selectedItem);
 				}
 			}
-			if (IDResolver.IntHasStoredID(ID, isBlock)) {
-				String[] info = IDResolver.GetInfoFromSaveString(IDResolver
-						.GetStoredIDName(ID, isBlock));
-				Name = "ID " + info[0] + " from " + info[1];
+			if (Name == null) {
+				if (isBlock && IDResolver.intHasStoredID(ID, true)) {
+					String[] info = IDResolver.getInfoFromSaveString(IDResolver
+							.getStoredIDName(ID, true));
+					Name = "ID " + info[0] + " from " + info[1];
+				} else {
+					if (IDResolver.intHasStoredID(ID, false)) {
+						String[] info = IDResolver
+								.getInfoFromSaveString(IDResolver
+										.getStoredIDName(ID, false));
+						Name = "ID " + info[0] + " from " + info[1];
+					}
+				}
 			}
+
 		} catch (Throwable e) {
 			Name = "ERROR";
 		}
 		boolean originalmenu = (isMenu && (ID == settingIntNewID.defaultValue));
 		if (!disableOverride) {
-			resolveScreenOverride.setEnabled(IDResolver.IntHasStoredID(ID,
-					isBlock) && IDResolver.overridesenabled && !originalmenu);
+			resolveScreenOverride.setEnabled(IDResolver.intHasStoredID(ID,
+					isBlock) && IDResolver.overridesEnabled && !originalmenu);
 		}
 		if (!originalmenu) {
 			if (Name == null) {
-				GuiApiHelper.setTextAreaText(resolveScreenLabel, GetTypeName()
+				GuiApiHelper.setTextAreaText(resolveScreenLabel, getTypeName()
 						+ " ID " + Integer.toString(ID) + " is available!");
 				resolveScreenContinue.setEnabled(true);
 			} else {
-				GuiApiHelper.setTextAreaText(resolveScreenLabel, GetTypeName()
+				GuiApiHelper.setTextAreaText(resolveScreenLabel, getTypeName()
 						+ " ID " + Integer.toString(ID) + " is used by " + Name
 						+ ".");
 				resolveScreenContinue.setEnabled(false);
@@ -2235,74 +2296,65 @@ public class IDResolver implements Runnable {
 			resolveScreenContinue.setEnabled(true);
 		}
 	}
-	
-	private static void SyncMinecraftScreen(Minecraft mc,GuiWidgetScreen widgetscreen)
-	{
-		mc.displayWidth = mc.mcCanvas.getWidth();
-		mc.displayHeight = mc.mcCanvas.getHeight();
-		widgetscreen.layout();
-		RenderScale.scale = widgetscreen.screenSize.scaleFactor;
-		GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
-		widgetscreen.renderer.syncViewportSize();
-	}
 
-	private void RunConflict() throws Exception {
+	private void runConflict() throws Exception {
 		if (specialItem) {
 			return;
 		}
 		Minecraft mc = ModLoader.getMinecraftInstance();
 		if (mc == null) {
 			IDResolver
-					.AppendExtraInfo("Warning: When resolving "
+					.appendExtraInfo("Warning: When resolving "
 							+ longName
 							+ " ID resolver detected that the Minecraft object was NULL! Assuming 'special' object handling. Please report this!");
 			return;
 		}
-		if (!mc.running && IDResolver.shutdown) {
+		if (IDResolver.shutdown) {
 			IDResolver
-					.GetLogger()
+					.getLogger()
 					.log(Level.INFO,
-							"IDResolver - Minecraft has reported that it is shutting down, skipping assignment.");
+							"IDResolver - IDResolver is attempting to shut down due to user request, skipping assignment.");
 			throw new Exception("Minecraft is shutting down.");
 		}
+
 		running = true;
 		if (IDResolver.autoAssignMod != null) {
 			boolean rev = IDResolver.autoAssignMod.startsWith("!");
-			if (IDResolver.GetInfoFromSaveString(longName)[1]
+			if (IDResolver.getInfoFromSaveString(longName)[1]
 					.equals(IDResolver.autoAssignMod.substring(rev ? 1 : 0))) {
-				AutoAssign(true, rev);
+				autoAssign(true, rev);
 			}
 		}
-		if (!HasOpenSlot()) {
+		if (!hasOpenSlot()) {
 			IDResolver.logger.log(Level.INFO,
 					"IDResolver - no open slots are available.");
-			throw new RuntimeException("No open " + GetTypeName()
+			throw new RuntimeException("No open " + getTypeName()
 					+ " IDs are available.");
 		}
 		GuiWidgetScreen widgetscreen = GuiWidgetScreen.getInstance();
-		SyncMinecraftScreen(mc,widgetscreen);
-		int priority = IDResolver.GetModPriority(IDResolver
-				.GetInfoFromSaveString(longName)[1]);
+		IDResolver.syncMinecraftScreen(mc, widgetscreen);
+		int priority = IDResolver.getModPriority(IDResolver
+				.getInfoFromSaveString(longName)[1]);
 		boolean restart = false;
 		do {
 			widgetscreen.resetScreen();
 			widgetscreen.setScreen(subscreenIDSetter);
-			LoadBackground(widgetscreen);
+			loadBackground(widgetscreen);
 			if (restart) {
 				running = true;
 			}
-			run();
+			updateUI();
 			Font fnt = widgetscreen.theme.getDefaultFont();
 			restart = false;
-			mod_IDResolver.UpdateUsed();
+			mod_IDResolver.updateUsed();
 			if (priority > 0) {
-				if (IDResolver.IntHasStoredID(settingIntNewID.defaultValue,
+				if (IDResolver.intHasStoredID(settingIntNewID.defaultValue,
 						isBlock)) {
-					String otherobject = IDResolver.GetStoredIDName(
+					String otherobject = IDResolver.getStoredIDName(
 							settingIntNewID.defaultValue, isBlock, true);
 					String otherclass = IDResolver
-							.GetInfoFromSaveString(otherobject)[1];
-					int otherpri = IDResolver.GetModPriority(otherclass);
+							.getInfoFromSaveString(otherobject)[1];
+					int otherpri = IDResolver.getModPriority(otherclass);
 					if (priority > otherpri) {
 						running = false;
 						overridingSetting = true;
@@ -2310,12 +2362,12 @@ public class IDResolver implements Runnable {
 								.log(Level.INFO,
 										"IDResolver - Override will be called due to mod priority for "
 												+ IDResolver
-														.GetInfoFromSaveString(longName)[1]
+														.getInfoFromSaveString(longName)[1]
 												+ " is greater than for "
 												+ otherclass);
 					} else if (priority == otherpri) {
-						PriorityConflict(
-								IDResolver.TrimType(longName, isBlock),
+						priorityConflict(
+								IDResolver.trimType(longName, isBlock),
 								otherobject, isBlock);
 					}
 				} else {
@@ -2325,17 +2377,17 @@ public class IDResolver implements Runnable {
 								.log(Level.INFO,
 										"IDResolver - Override will be called due to mod priority for "
 												+ IDResolver
-														.GetInfoFromSaveString(longName)[1]);
+														.getInfoFromSaveString(longName)[1]);
 					} else {
 						IDResolver.logger
 								.log(Level.INFO,
 										"IDResolver - Automatically returning default ID due to mod priority for "
 												+ IDResolver
-														.GetInfoFromSaveString(longName)[1]);
+														.getInfoFromSaveString(longName)[1]);
 					}
 				}
 			}
-			if (IDResolver.ShowOnlyConflicts()) {
+			if (IDResolver.showOnlyConflicts()) {
 				if (resolveScreenContinue.isEnabled()) {
 					running = false;
 					IDResolver.logger
@@ -2344,15 +2396,16 @@ public class IDResolver implements Runnable {
 				}
 			}
 			widgetscreen.layout();
+			boolean wasRunning = mc.running;
 			while (running) {
 
 				if (((mc.displayWidth != mc.mcCanvas.getWidth()) || (mc.displayHeight != mc.mcCanvas
 						.getHeight()))) {
-					SyncMinecraftScreen(mc,widgetscreen);
+					IDResolver.syncMinecraftScreen(mc, widgetscreen);
 				}
 
 				widgetscreen.gui.update();
-				if ((fnt != null) && IDResolver.ShowTick(false)) {
+				if ((fnt != null) && IDResolver.showTick(false)) {
 					widgetscreen.renderer.startRendering();
 					String[] ids = mod_IDResolver.getIDs();
 					for (int i = 0; i < ids.length; i++) {
@@ -2363,17 +2416,27 @@ public class IDResolver implements Runnable {
 				Display.update();
 				Thread.yield();
 				if (!mc.running) {
+					if(wasRunning)
+					{
+						IDResolver.shutdown = true;
+					}
+					
+					if (!IDResolver.shutdown && IDResolver.attemptedRecover) {
+						IDResolver.shutdown = true;
+					}
 					if (IDResolver.shutdown) {
 						IDResolver
-								.GetLogger()
+								.getLogger()
 								.log(Level.INFO,
 										"IDResolver - Minecraft has reported that it is shutting down, skipping assignment.");
 						settingIntNewID = null;
 						running = false;
 					} else {
-						DisplayMessage(IDResolver.langMinecraftShuttingDown);
-						IDResolver.shutdown = true;
+
+						displayMessage(IDResolver.langMinecraftShuttingDown);
+						IDResolver.shutdown = false;
 						mc.running = true;
+						IDResolver.attemptedRecover = true;
 					}
 				}
 			}
@@ -2385,7 +2448,7 @@ public class IDResolver implements Runnable {
 				if (!overridingSetting) {
 					IDResolver.knownIDs.setProperty(longName, ID.toString());
 				} else {
-					String oldname = IDResolver.GetStoredIDName(ID, isBlock,
+					String oldname = IDResolver.getStoredIDName(ID, isBlock,
 							false);
 					if ((isBlock && (Block.blocksList[ID] == null))
 							|| (!isBlock && (Item.itemsList[ID] == null))) {
@@ -2395,14 +2458,14 @@ public class IDResolver implements Runnable {
 						IDResolver.logger
 								.log(Level.INFO,
 										"IDResolver - Override requested for "
-												+ GetTypeName()
+												+ getTypeName()
 												+ " at slot "
 												+ ID
 												+ ", but it is currently just a setting. Overriding now, IDResolver will ask later for the new block ID.");
 					} else {
 						IDResolver.logger.log(Level.INFO,
 								"IDResolver - Overriding setting. Requesting new ID for old "
-										+ GetTypeName() + " at slot " + ID
+										+ getTypeName() + " at slot " + ID
 										+ ".");
 						IDResolver resolver = null;
 						if (isBlock) {
@@ -2412,12 +2475,12 @@ public class IDResolver implements Runnable {
 						}
 						resolver.longName = oldname;
 						resolver.disableOverride = true;
-						resolver.SetupGui(ID);
+						resolver.setupGui(ID);
 						IDResolver.knownIDs.remove(oldname);
 						IDResolver.knownIDs
 								.setProperty(longName, ID.toString());
-						resolver.run();
-						resolver.RunConflict();
+						resolver.updateUI();
+						resolver.runConflict();
 						Integer oldid = resolver.settingIntNewID.get();
 						if (resolver.settingIntNewID == null) {
 							IDResolver.logger
@@ -2430,26 +2493,26 @@ public class IDResolver implements Runnable {
 							continue;
 						}
 						IDResolver.logger.log(Level.INFO,
-								"IDResolver - Overriding " + GetTypeName()
+								"IDResolver - Overriding " + getTypeName()
 										+ " as requested.");
 						if (isBlock) {
-							IDResolver.OverrideBlockID(ID, oldid);
+							IDResolver.overrideBlockID(ID, oldid);
 						} else {
-							IDResolver.OverrideItemID(ID, oldid);
+							IDResolver.overrideItemID(ID, oldid);
 						}
 						IDResolver.logger.log(Level.INFO,
 								"IDResolver - Sucessfully overrode IDs. Setting ID "
-										+ ID + " for " + GetName()
-										+ ", Overriding " + resolver.GetName()
+										+ ID + " for " + getName()
+										+ ", Overriding " + resolver.getName()
 										+ " to " + oldid + " as requested.");
 					}
 				}
 				try {
-					IDResolver.StoreProperties();
+					IDResolver.storeProperties();
 				} catch (Throwable e) {
 					IDResolver.logger.log(Level.INFO,
 							"IDResolver - Was unable to store settings for "
-									+ GetTypeName() + " " + GetName()
+									+ getTypeName() + " " + getName()
 									+ " due to an exception.", e);
 				}
 			}
@@ -2457,7 +2520,7 @@ public class IDResolver implements Runnable {
 		widgetscreen.resetScreen();
 	}
 
-	private void RunConflictMenu() {
+	private void runConflictMenu() {
 		running = true;
 		GuiModScreen modscreen;
 		GuiWidgetScreen widgetscreen = GuiWidgetScreen.getInstance();
@@ -2465,7 +2528,7 @@ public class IDResolver implements Runnable {
 		Minecraft mc = ModLoader.getMinecraftInstance();
 		if (!mc.running) {
 			IDResolver
-					.GetLogger()
+					.getLogger()
 					.log(Level.INFO,
 							"IDResolver - Minecraft has reported that it is shutting down, skipping assignment.");
 			settingIntNewID = null;
@@ -2479,13 +2542,13 @@ public class IDResolver implements Runnable {
 			if (restart) {
 				running = true;
 			}
-			run();
+			updateUI();
 			Font fnt = widgetscreen.theme.getDefaultFont();
 			restart = false;
-			mod_IDResolver.UpdateUsed();
+			mod_IDResolver.updateUsed();
 			if (isMenu) {
 				if (mc.theWorld != null) {
-					DisplayMessage("You cannot modify IDs while in game. Please exit to main menu and try again.");
+					displayMessage("You cannot modify IDs while in game. Please exit to main menu and try again.");
 				}
 			}
 			while (running) {
@@ -2498,7 +2561,7 @@ public class IDResolver implements Runnable {
 				}
 
 				modscreen.drawScreen(0, 0, 0);
-				if ((fnt != null) && IDResolver.ShowTick(false)) {
+				if ((fnt != null) && IDResolver.showTick(false)) {
 					widgetscreen.renderer.startRendering();
 					String[] ids = mod_IDResolver.getIDs();
 					for (int i = 0; i < ids.length; i++) {
@@ -2510,7 +2573,7 @@ public class IDResolver implements Runnable {
 				Thread.yield();
 				if (!mc.running) {
 					IDResolver
-							.GetLogger()
+							.getLogger()
 							.log(Level.INFO,
 									"IDResolver - Minecraft has reported that it is shutting down, skipping assignment.");
 					settingIntNewID = null;
@@ -2522,14 +2585,14 @@ public class IDResolver implements Runnable {
 				if (!overridingSetting) {
 					IDResolver.knownIDs.setProperty(longName, ID.toString());
 					if (isBlock) {
-						IDResolver.OverrideBlockID(
+						IDResolver.overrideBlockID(
 								settingIntNewID.defaultValue, ID);
 					} else {
-						IDResolver.OverrideItemID(settingIntNewID.defaultValue,
+						IDResolver.overrideItemID(settingIntNewID.defaultValue,
 								ID);
 					}
 				} else {
-					String oldname = IDResolver.GetStoredIDName(ID, isBlock,
+					String oldname = IDResolver.getStoredIDName(ID, isBlock,
 							false);
 					if ((isBlock && (Block.blocksList[ID] == null))
 							|| (!isBlock && (Item.itemsList[ID] == null))) {
@@ -2539,21 +2602,21 @@ public class IDResolver implements Runnable {
 						IDResolver.logger
 								.log(Level.INFO,
 										"IDResolver - Override requested for "
-												+ GetTypeName()
+												+ getTypeName()
 												+ " at slot "
 												+ ID
 												+ ", but it is currently just a setting. Removing the old setting as it may be a loose end.");
 						if (isBlock) {
-							IDResolver.OverrideBlockID(
+							IDResolver.overrideBlockID(
 									settingIntNewID.defaultValue, ID);
 						} else {
-							IDResolver.OverrideItemID(
+							IDResolver.overrideItemID(
 									settingIntNewID.defaultValue, ID);
 						}
 					} else {
 						IDResolver.logger.log(Level.INFO,
 								"IDResolver - Overriding setting. Requesting new ID for old "
-										+ GetTypeName() + " at slot " + ID
+										+ getTypeName() + " at slot " + ID
 										+ ".");
 						Object oldObject = null;
 						IDResolver resolver = null;
@@ -2568,12 +2631,12 @@ public class IDResolver implements Runnable {
 						}
 						resolver.longName = oldname;
 						resolver.disableOverride = true;
-						resolver.SetupGui(ID);
+						resolver.setupGui(ID);
 						IDResolver.knownIDs.remove(oldname);
 						IDResolver.knownIDs
 								.setProperty(longName, ID.toString());
-						resolver.run();
-						resolver.RunConflictMenu();
+						resolver.updateUI();
+						resolver.runConflictMenu();
 						Integer oldid = resolver.settingIntNewID.get();
 						if (isBlock) {
 							Block.blocksList[ID] = (Block) oldObject;
@@ -2597,12 +2660,12 @@ public class IDResolver implements Runnable {
 							continue;
 						}
 						IDResolver.logger.log(Level.INFO,
-								"IDResolver - Overriding " + GetTypeName()
+								"IDResolver - Overriding " + getTypeName()
 										+ " as requested.");
 						if (isBlock) {
-							IDResolver.OverrideBlockID(oldid, ID);
+							IDResolver.overrideBlockID(oldid, ID);
 						} else {
-							IDResolver.OverrideItemID(oldid, ID);
+							IDResolver.overrideItemID(oldid, ID);
 						}
 						if (isBlock) {
 							Block.blocksList[oldid] = (Block) oldObject;
@@ -2611,17 +2674,17 @@ public class IDResolver implements Runnable {
 						}
 						IDResolver.logger.log(Level.INFO,
 								"IDResolver - Sucessfully overrode IDs. Setting ID "
-										+ ID + " for " + GetName()
-										+ ", Overriding " + resolver.GetName()
+										+ ID + " for " + getName()
+										+ ", Overriding " + resolver.getName()
 										+ " to " + oldid + " as requested.");
 					}
 				}
 				try {
-					IDResolver.StoreProperties();
+					IDResolver.storeProperties();
 				} catch (Throwable e) {
 					IDResolver.logger.log(Level.INFO,
 							"IDResolver - Was unable to store settings for "
-									+ GetTypeName() + " " + GetName()
+									+ getTypeName() + " " + getName()
 									+ " due to an exception.", e);
 				}
 			}
@@ -2629,13 +2692,13 @@ public class IDResolver implements Runnable {
 		GuiModScreen.back();
 	}
 
-	private void SetupGui(int RequestedID) {
+	private void setupGui(int RequestedID) {
 		subscreenIDSetter = new WidgetSinglecolumn(new Widget[0]);
 		{
-			overrideName = GetName();
+			overrideName = getName();
 			SimpleTextAreaModel model = new SimpleTextAreaModel();
 			if (!isMenu) {
-				model.setText("New " + GetTypeName()
+				model.setText("New " + getTypeName()
 						+ " detected. Select ID for " + overrideName, false);
 			} else {
 				model.setText("Select ID for " + overrideName, false);
@@ -2645,47 +2708,48 @@ public class IDResolver implements Runnable {
 			((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions
 					.put(area, 0);
 			settingIntNewID = new SettingInt("New ID", RequestedID, (isBlock
-					|| specialItem ? 1 : Block.blocksList.length), 1, (isBlock
-					|| specialItem ? Block.blocksList.length - 1
-					: Item.itemsList.length - 1));
+					|| specialItem ? 1 : Item.shovelSteel.shiftedIndex), 1,
+					(isBlock || specialItem ? Block.blocksList.length - 1
+							: Item.itemsList.length - 1));
 			settingIntNewID.defaultValue = RequestedID;
 			WidgetInt intdisplay = new WidgetInt(settingIntNewID, "New ID");
 			subscreenIDSetter.add(intdisplay);
-			intdisplay.slider.getModel().addCallback(this);
+			intdisplay.slider.getModel().addCallback(new ModAction(this,"updateUI"));
+			intdisplay.slider.setCanEdit(true);
 			model = new SimpleTextAreaModel();
 			model.setText("", false);
 			resolveScreenLabel = new TextArea(model);
 			subscreenIDSetter.add(resolveScreenLabel);
 			resolveScreenContinue = GuiApiHelper.makeButton(
-					"Save and Continue loading", "Finish", this, true);
+					"Save and Continue loading", "finish", this, true);
 			resolveScreenContinue.setEnabled(false);
 			subscreenIDSetter.add(resolveScreenContinue);
 			if (!disableOverride) {
 				resolveScreenOverride = GuiApiHelper.makeButton(
-						"Override old setting", "OverrideOld", this, true);
-				resolveScreenOverride.setEnabled(IDResolver.IntHasStoredID(
-						RequestedID, isBlock) && IDResolver.overridesenabled);
+						"Override old setting", "overrideOld", this, true);
+				resolveScreenOverride.setEnabled(IDResolver.intHasStoredID(
+						RequestedID, isBlock) && IDResolver.overridesEnabled);
 				subscreenIDSetter.add(resolveScreenOverride);
 			}
 
 			if (!isBlock && !isMenu) {
 				subscreenIDSetter.add(GuiApiHelper.makeButton(
-						"Force Overwrite", "ItemForceOverwrite", this, true));
+						"Force Overwrite", "itemForceOverwrite", this, true));
 			}
 
 			if (isMenu) {
 				subscreenIDSetter.add(GuiApiHelper.makeButton(
-						"Delete saved ID", "MenuDeleteSavedID", this, true));
+						"Delete saved ID", "menuDeleteSavedID", this, true));
 			}
 			subscreenIDSetter.add(GuiApiHelper.makeButton(
-					"Automatically assign an ID", "AutoAssign", this, true));
+					"Automatically assign an ID", "autoAssign", this, true));
 			subscreenIDSetter.add(GuiApiHelper.makeButton(
-					"Automatically assign an ID in Reverse", "AutoAssignRev",
+					"Automatically assign an ID in Reverse", "autoAssignRev",
 					this, true));
 			if (!disableAutoAll) {
 				Button assignallbuttons = GuiApiHelper.makeButton(
 						"Automatically assign an ID to All\r\nfrom this mod",
-						"AutoAssignAll", this, true);
+						"autoAssignAll", this, true);
 				subscreenIDSetter.add(assignallbuttons);
 
 				((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions
@@ -2694,52 +2758,52 @@ public class IDResolver implements Runnable {
 				assignallbuttons = GuiApiHelper
 						.makeButton(
 								"Automatically assign an ID to All from\r\nthis mod in Reverse",
-								"AutoAssignAllRev", this, true);
+								"autoAssignAllRev", this, true);
 
 				subscreenIDSetter.add(assignallbuttons);
 
 				((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions
 						.put(assignallbuttons, 30);
 
-				if (IDResolver.GetModPriority(IDResolver
-						.GetInfoFromSaveString(longName)[1]) < Integer.MAX_VALUE) {
+				if (IDResolver.getModPriority(IDResolver
+						.getInfoFromSaveString(longName)[1]) < Integer.MAX_VALUE) {
 					subscreenIDSetter.add(GuiApiHelper.makeButton(
 							"Raise the priority for this mod",
-							"RaisePriorityAndOK", this, true));
+							"raisePriorityAndOK", this, true));
 				}
 			}
 			subscreenIDSetter.add(GuiApiHelper.makeButton(
-					"Reset to default ID", "ResetIDtoDefault", this, true));
+					"Reset to default ID", "resetIDtoDefault", this, true));
 			subscreenIDSetter.add(GuiApiHelper.makeButton("Cancel and Return",
-					"Cancel", this, true));
+					"cancel", this, true));
 		}
 		subscreenIDSetter = new ScrollPane(subscreenIDSetter);
 		((ScrollPane) subscreenIDSetter).setFixed(ScrollPane.Fixed.HORIZONTAL);
 	}
 
 	@SuppressWarnings("unused")
-	private void UpPrioritizeMod() {
-		IDResolver.GetLogger().log(Level.INFO,
+	private void upPrioritizeMod() {
+		IDResolver.getLogger().log(Level.INFO,
 				"IDResolver - User pressed 'UpPrioritizeMod' button.");
-		String classname = IDResolver.GetInfoFromSaveString(longName)[1];
+		String classname = IDResolver.getInfoFromSaveString(longName)[1];
 		Boolean override = false;
 		if (isBlock) {
 			Block selectedBlock = Block.blocksList[settingIntNewID.defaultValue];
 			if (selectedBlock != null) {
-				override = GetBlockName(selectedBlock) != null;
+				override = getBlockName(selectedBlock) != null;
 			}
 		} else {
 			Item selectedItem = Item.itemsList[settingIntNewID.defaultValue];
 			if (selectedItem != null) {
-				override = GetItemName(selectedItem) != null;
+				override = getItemName(selectedItem) != null;
 			}
 		}
-		if (IDResolver.IntHasStoredID(settingIntNewID.defaultValue, isBlock)) {
+		if (IDResolver.intHasStoredID(settingIntNewID.defaultValue, isBlock)) {
 			override = true;
 		}
 		overridingSetting = override;
 		settingIntNewID.reset();
-		DisplayMessage(classname + " is now specified as a Priority Mod Level "
-				+ IDResolver.RaiseModPriority(classname));
+		displayMessage(classname + " is now specified as a Priority Mod Level "
+				+ IDResolver.raiseModPriority(classname));
 	}
 }

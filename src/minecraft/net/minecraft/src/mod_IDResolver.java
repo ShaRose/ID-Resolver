@@ -10,12 +10,13 @@ public class mod_IDResolver extends BaseMod {
 	private static Boolean firstTick = true;
 	private static final String langBlockHookDisabled = "Block hook is disabled or not working! Block conflicts will not be resolved correctly.";
 	private static final String langItemHookDisabled = "Item hook is disabled or not working! Item conflicts will not be resolved correctly.";
-	private static final String langNotInstalledCorrectly = "ID Resolver has detected that it is not installed correctly. ID resolver needs to be installed directly into the minecraft jar, as it needs to overwrite some classes. Modloader's mod folder does not support this as dictated on it's topic, and ID resolver's. Please install correctly, and restart minecraft.";
+	private static final String langNotInstalledCorrectly = "ID Resolver has detected that it is not installed correctly. ID resolver needs to be installed directly into the minecraft jar. Modloader's mod folder does not support this as it needs to load before it would be loaded in this way. Please install correctly, and restart minecraft.";
 	private static Field modLoaderSprites;
 	private static Boolean secondTick = true;
 	private static Boolean showError = false;
 	private static int totalRegisteredBlocks = 0;
 	private static int totalRegisteredItems = 0;
+
 	static {
 		try {
 			mod_IDResolver.modLoaderSprites = ModLoader.class
@@ -23,29 +24,29 @@ public class mod_IDResolver extends BaseMod {
 			mod_IDResolver.modLoaderSprites.setAccessible(true);
 		} catch (Throwable e) {
 			IDResolver
-					.GetLogger()
+					.getLogger()
 					.log(Level.INFO,
 							"IDResolver - Unable to get itemSpritesLeft field from Modloader.",
 							e);
 		}
-		
+
 		Logger log = ModLoader.getLogger();
-		Logger idlog = IDResolver.GetLogger();
+		Logger idlog = IDResolver.getLogger();
 		String temp = "ID Resolver - "
-				+ (IDResolver.WasBlockInited() ? "Block hook is enabled and working."
+				+ (IDResolver.wasBlockInited() ? "Block hook is enabled and working."
 						: mod_IDResolver.langBlockHookDisabled);
 		log.info(temp);
 		idlog.info(temp);
 		temp = "ID Resolver - "
-				+ (IDResolver.WasItemInited() ? "Item hook is enabled and working."
+				+ (IDResolver.wasItemInited() ? "Item hook is enabled and working."
 						: mod_IDResolver.langItemHookDisabled);
 		log.info(temp);
 		idlog.info(temp);
-		
+
 		if (mod_IDResolver.class.getProtectionDomain().getCodeSource()
 				.getLocation().toString().indexOf(".minecraft/mods") != -1) {
 			mod_IDResolver.showError = true;
-			IDResolver.GetLogger().log(Level.INFO,
+			IDResolver.getLogger().log(Level.INFO,
 					mod_IDResolver.langNotInstalledCorrectly);
 		}
 	}
@@ -77,7 +78,7 @@ public class mod_IDResolver extends BaseMod {
 		}
 	}
 
-	public static void UpdateUsed() {
+	public static void updateUsed() {
 		mod_IDResolver.totalRegisteredBlocks = 1;
 		mod_IDResolver.totalRegisteredItems = 0;
 		for (int i = 1; i < Block.blocksList.length; i++) {
@@ -93,15 +94,14 @@ public class mod_IDResolver extends BaseMod {
 	}
 
 	@Override
-	public String getVersion() {
-		return "1.2.5 - Update 0";
+	public String getPriorities() {
+		return "after:*";
 	}
-	
+
 	@Override
-	public String getPriorities()
-    {
-        return "after:*";
-    }
+	public String getVersion() {
+		return "1.2.5 - Update 1";
+	}
 
 	@Override
 	public void load() {
@@ -112,14 +112,14 @@ public class mod_IDResolver extends BaseMod {
 	public boolean onTickInGUI(float partialTicks, Minecraft mc, GuiScreen scr) {
 		if (scr instanceof GuiMainMenu) {
 			if (!mod_IDResolver.firstTick && mod_IDResolver.secondTick) {
-				if (mod_IDResolver.showError || !IDResolver.WasBlockInited()
-						|| !IDResolver.WasItemInited()
-						|| (IDResolver.GetExtraInfo() != null)) {
+				if (mod_IDResolver.showError || !IDResolver.wasBlockInited()
+						|| !IDResolver.wasItemInited()
+						|| (IDResolver.getExtraInfo() != null)) {
 					String allErrors = null;
 					if (mod_IDResolver.showError) {
 						allErrors = mod_IDResolver.langNotInstalledCorrectly;
 					}
-					if (!IDResolver.WasBlockInited()) {
+					if (!IDResolver.wasBlockInited()) {
 						if (allErrors != null) {
 							allErrors += "\r\n\r\n"
 									+ mod_IDResolver.langBlockHookDisabled;
@@ -127,7 +127,7 @@ public class mod_IDResolver extends BaseMod {
 							allErrors = mod_IDResolver.langBlockHookDisabled;
 						}
 					}
-					if (!IDResolver.WasItemInited()) {
+					if (!IDResolver.wasItemInited()) {
 						if (allErrors != null) {
 							allErrors += "\r\n\r\n"
 									+ mod_IDResolver.langItemHookDisabled;
@@ -135,11 +135,11 @@ public class mod_IDResolver extends BaseMod {
 							allErrors = mod_IDResolver.langItemHookDisabled;
 						}
 					}
-					if (IDResolver.GetExtraInfo() != null) {
+					if (IDResolver.getExtraInfo() != null) {
 						if (allErrors != null) {
-							allErrors += "\r\n\r\n" + IDResolver.GetExtraInfo();
+							allErrors += "\r\n\r\n" + IDResolver.getExtraInfo();
 						} else {
-							allErrors = IDResolver.GetExtraInfo();
+							allErrors = IDResolver.getExtraInfo();
 						}
 					}
 
@@ -153,12 +153,12 @@ public class mod_IDResolver extends BaseMod {
 				mod_IDResolver.secondTick = false;
 			}
 			if (mod_IDResolver.firstTick) {
-				IDResolver.CheckLooseSettings(true);
-				mod_IDResolver.UpdateUsed();
-				IDResolver.ReLoadModGui();
+				IDResolver.checkLooseSettings(true);
+				mod_IDResolver.updateUsed();
+				IDResolver.reLoadModGui();
 				mod_IDResolver.firstTick = false;
 			}
-			if (IDResolver.ShowTick(true)) {
+			if (IDResolver.showTick(true)) {
 				ScaledResolution scaledresolution = new ScaledResolution(
 						mc.gameSettings, mc.displayWidth, mc.displayHeight);
 				String[] ids = mod_IDResolver.getIDs();
