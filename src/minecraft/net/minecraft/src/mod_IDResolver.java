@@ -1,8 +1,11 @@
 package net.minecraft.src;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import cpw.mods.fml.client.SpriteHelper;
 
 import net.minecraft.client.Minecraft;
 
@@ -11,23 +14,31 @@ public class mod_IDResolver extends BaseMod {
 	private static final String langBlockHookDisabled = "Block hook is disabled or not working! Block conflicts will not be resolved correctly.";
 	private static final String langItemHookDisabled = "Item hook is disabled or not working! Item conflicts will not be resolved correctly.";
 	private static final String langNotInstalledCorrectly = "ID Resolver has detected that it is not installed correctly. ID resolver needs to be installed directly into the minecraft jar. Modloader's mod folder does not support this as it needs to load before it would be loaded in this way. Please install correctly, and restart minecraft.";
-	private static Field modLoaderSprites;
+	private static Field modLoaderItemSprites;
+	private static Field modLoaderTerrainSprites;
+	private static boolean isFML = true;
 	private static Boolean secondTick = true;
 	private static Boolean showError = false;
+	private static boolean isFMLSpritesInited = false;
 	private static int totalRegisteredBlocks = 0;
 	private static int totalRegisteredItems = 0;
 
 	static {
 		try {
-			mod_IDResolver.modLoaderSprites = ModLoader.class
+			mod_IDResolver.modLoaderItemSprites = ModLoader.class
 					.getDeclaredField("itemSpritesLeft");
-			mod_IDResolver.modLoaderSprites.setAccessible(true);
+			mod_IDResolver.modLoaderItemSprites.setAccessible(true);
+			mod_IDResolver.modLoaderTerrainSprites = ModLoader.class
+					.getDeclaredField("terrainSpritesLeft");
+			mod_IDResolver.modLoaderTerrainSprites.setAccessible(true);
+			
+			isFML = false;
 		} catch (Throwable e) {
+			isFML = true;
 			IDResolver
 					.getLogger()
 					.log(Level.INFO,
-							"IDResolver - Unable to get itemSpritesLeft field from Modloader.",
-							e);
+							"IDResolver - Unable to get itemSpritesLeft field from Modloader. Assuming FML Handling.");
 		}
 
 		Logger log = ModLoader.getLogger();
@@ -52,15 +63,37 @@ public class mod_IDResolver extends BaseMod {
 	}
 
 	public static String[] getIDs() {
+		if(isFML && !isFMLSpritesInited)
+		{
+			try
+			{
+				SpriteHelper.freeSlotCount("/terrain.png");
+				isFMLSpritesInited = true;
+			}
+			catch(Throwable e)
+			{
+				try
+				{
+					IDResolver.getLogger().log(Level.INFO,"IDResolver - FML Sprite maps not initialized yet. Attempting to do so:");
+					Method initmethod = SpriteHelper.class.getDeclaredMethod("initMCSpriteMaps");
+					initmethod.setAccessible(true);
+					initmethod.invoke(null);
+					isFMLSpritesInited = true;
+				}
+				catch(Throwable e2)
+				{
+					IDResolver.getLogger().log(Level.WARNING,"IDResolver - FML Sprite maps failed to initalize.",e2);
+				}
+			}
+			
+		}
+		
 		return new String[] {
-				String.format("Block IDs left: %s",
-						mod_IDResolver.getRemainingBlockIDs()),
-				String.format("Item IDs left: %s",
-						mod_IDResolver.getRemainingItemIDs()),
-				String.format("Sprite IDs left: %s",
-						mod_IDResolver.getRemainingSpriteIDs()) };
+				"Block IDs left: " + mod_IDResolver.getRemainingBlockIDs(),
+				"Item IDs left: " + mod_IDResolver.getRemainingItemIDs(),
+				"Item Sprite IDs left: " + mod_IDResolver.getRemainingItemSpriteIDs(),
+				"Terrain Sprite IDs left: " + mod_IDResolver.getRemainingTerrainSpriteIDs() };
 	}
-
 	public static Integer getRemainingBlockIDs() {
 		return Block.blocksList.length - mod_IDResolver.totalRegisteredBlocks;
 	}
@@ -69,10 +102,28 @@ public class mod_IDResolver extends BaseMod {
 		return Item.itemsList.length - mod_IDResolver.totalRegisteredItems;
 	}
 
-	public static String getRemainingSpriteIDs() {
+	public static String getRemainingItemSpriteIDs() {
 		try {
-			return ((Integer) mod_IDResolver.modLoaderSprites.get(null))
+			if(!isFML)
+			{
+				return ((Integer) mod_IDResolver.modLoaderItemSprites.get(null))
 					.toString();
+			}
+			return Integer.toString(SpriteHelper.freeSlotCount("/gui/items.png"));
+		} catch (Throwable e) {
+			return "ERROR";
+		}
+	}
+	
+	
+	public static String getRemainingTerrainSpriteIDs() {
+		try {
+			if(!isFML)
+			{
+				return ((Integer) mod_IDResolver.modLoaderTerrainSprites.get(null))
+					.toString();
+			}
+			return Integer.toString(SpriteHelper.freeSlotCount("/terrain.png"));
 		} catch (Throwable e) {
 			return "ERROR";
 		}
@@ -100,7 +151,7 @@ public class mod_IDResolver extends BaseMod {
 
 	@Override
 	public String getVersion() {
-		return "1.2.5 - Update 1";
+		return "1.2.5 - Update 2";
 	}
 
 	@Override

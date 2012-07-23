@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.Vector;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
@@ -425,8 +426,7 @@ public class IDResolver
 			} else
 			{
 				String stackName = IDResolver.getItemNameForStack(stack);
-				tooltipText = new StringBuilder(String.format("Slot %-4s: %s", i, StringTranslate
-						.getInstance().translateNamedKey(stackName)));
+				tooltipText = new StringBuilder(String.format("Slot %-4s: %s", i, StatCollector.translateToLocal(stackName + ".name")));
 				label = new Label(tooltipText.toString());
 				
 				tooltipText.append(String.format("\r\n\r\nInternal name: %s", stackName));
@@ -468,8 +468,75 @@ public class IDResolver
 		GuiModScreen.show(window);
 	}
 	
+	private static String generateIDMappingReport()
+	{
+		StringBuilder report = new StringBuilder();
+		String linebreak = System.getProperty("line.separator");
+		report.append("ID Resolver ID Status report").append(linebreak);
+		report.append("Generated on " + new Date().toString()).append(linebreak);
+		
+		// mod_Name => (oldID => newID)
+		TreeMap<String,TreeMap<String,Integer>> mapping = new TreeMap<String, TreeMap<String,Integer>>();
+		
+		for (Entry<Object, Object> entry : IDResolver.knownIDs.entrySet())
+		{
+			try
+			{
+			String key = (String) entry.getKey();
+			String newID = (String) entry.getValue();
+			if("SAVEVERSION".equals(key)) continue;
+			String[] info = IDResolver.getInfoFromSaveString(key);
+			if(!mapping.containsKey(info[1]))
+			{
+				mapping.put(info[1], new TreeMap<String, Integer>());
+			}
+			mapping.get(info[1]).put(info[0],Integer.parseInt(newID));
+			}
+			catch(Throwable e)
+			{
+				// Chances are, this is never going to happen, unless there's corrupt data already in knownIDs.
+				IDResolver.getLogger().log(Level.INFO,
+						"IDResolver - Exception while generating tables for export. Skipping entry '"+ entry.getKey() +"'.",e);
+			}
+		}
+		
+		for (Entry<String, TreeMap<String,Integer>> mod : mapping.entrySet())
+		{
+			StringBuilder modReport = new StringBuilder(linebreak+linebreak);
+			modReport.append(mod.getKey()).append(linebreak)
+			.append("Type  - Original ID - New ID      -  Name").append(linebreak);
+			
+			for (Entry<String, Integer> entry : mod.getValue().entrySet())
+			{
+				String bestName = "Unknown Name / Missing Name";
+				boolean type = IDResolver.isBlockType(entry.getKey());
+				Item entryItem = Item.itemsList[entry.getValue()];
+				if(entryItem != null)
+				{
+					String itemName = entryItem.getItemName();
+					if(itemName != null && !("item.".equals(itemName)))
+					{
+						String languageName = StatCollector.translateToLocal(itemName + ".name");
+						bestName = (languageName == null ? itemName : languageName);
+					}
+				}
+				
+				Integer originalID = Integer.parseInt(IDResolver.trimType(entry.getKey(),type));
+				modReport.append(String.format("%-5s - %-11s - %-11s - %s",
+						type ? "Block" : "Item",originalID,entry.getValue(),bestName)).append(linebreak);
+			}
+			report.append(modReport);
+		}
+		
+		return report.toString();
+	}
+	
 	private static String generateIDStatusReport(int showFree)
 	{
+		if(showFree == 3)
+		{
+			return generateIDMappingReport();
+		}
 		StringBuilder report = new StringBuilder();
 		String linebreak = System.getProperty("line.separator");
 		report.append("ID Resolver ID Status report").append(linebreak);
@@ -1413,7 +1480,6 @@ public class IDResolver
 		}
 		IDResolver.windows = new WidgetSimplewindow[IDmap.size()];
 		int id = 0;
-		StringTranslate translate = StringTranslate.getInstance();
 		for (Entry<String, Vector<String>> entry : IDmap.entrySet())
 		{
 			WidgetSinglecolumn window = new WidgetSinglecolumn();
@@ -1464,7 +1530,7 @@ public class IDResolver
 				{
 					if ((name != null) && (name.length() != 0))
 					{
-						name = translate.translateNamedKey(name);
+						name = StatCollector.translateToLocal(name);
 						if ((name == null) || (name.length() == 0))
 						{
 							name = IDResolver.getItemNameForStack(stack);
@@ -1526,6 +1592,10 @@ public class IDResolver
 		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
 				"Generate ID Status Report with Collapsed Free IDs", "saveIDStatusToFile", IDResolver.class,
 				true, new Class[] { Integer.class }, 2));
+		
+		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton(
+				"Export ID Mapping Report", "saveIDStatusToFile", IDResolver.class,
+				true, new Class[] { Integer.class }, 3));
 		
 		IDResolver.modScreen.widgetColumn.add(GuiApiHelper.makeButton("Display ID Status Report",
 				"displayIDStatus", IDResolver.class, true));
@@ -1786,7 +1856,7 @@ public class IDResolver
 		Item item = stack.getItem();
 		String stackName = IDResolver.getItemNameForStack(stack);
 		StringBuilder tooltipText = new StringBuilder(String.format("Slot %-4s : Metadata %s: %s",
-				stack.itemID, damage, StringTranslate.getInstance().translateNamedKey(stackName)));
+				stack.itemID, damage, StatCollector.translateToLocal(stackName + ".name")));
 		
 		tooltipText.append(String.format("\r\n\r\nInternal name: %s", stackName));
 		try
@@ -1795,7 +1865,7 @@ public class IDResolver
 					IDResolver.getExistance(IDResolver.getPosition(stack.itemID), stack.itemID) == 1);
 		} catch (Throwable e)
 		{
-			
+			// Ignore this exception
 		}
 		
 		GuiApiHelper.setTextAreaText(textArea, tooltipText.toString());
@@ -2165,7 +2235,7 @@ public class IDResolver
 	{
 		try
 		{
-			String name = StringTranslate.getInstance().translateNamedKey(
+			String name = StatCollector.translateToLocal(
 					IDResolver.getItemNameForStack(new ItemStack(block)));
 			if ((name != null) && (name.length() != 0))
 			{
@@ -2177,6 +2247,7 @@ public class IDResolver
 			}
 		} catch (Throwable e)
 		{
+			// Ignore this exception
 		}
 		String[] info = IDResolver
 				.getInfoFromSaveString((IDResolver.intHasStoredID(block.blockID, true) ? IDResolver
@@ -2189,7 +2260,7 @@ public class IDResolver
 	{
 		try
 		{
-			String name = StringTranslate.getInstance().translateNamedKey(
+			String name = StatCollector.translateToLocal(
 					IDResolver.getItemNameForStack(new ItemStack(item)));
 			if ((name != null) && (name.length() != 0))
 			{
@@ -2201,6 +2272,7 @@ public class IDResolver
 			}
 		} catch (Throwable e)
 		{
+			// Ignore this exception
 		}
 		String[] info = IDResolver
 				.getInfoFromSaveString((IDResolver.intHasStoredID(item.shiftedIndex, false) ? IDResolver
@@ -2861,6 +2933,7 @@ public class IDResolver
 			model.setText("", false);
 			resolveScreenLabel = new TextArea(model);
 			subscreenIDSetter.add(resolveScreenLabel);
+			((WidgetSinglecolumn) subscreenIDSetter).heightOverrideExceptions.put(resolveScreenLabel, 0);
 			resolveScreenContinue = GuiApiHelper
 					.makeButton("Save and Continue loading", "finish", this, true);
 			resolveScreenContinue.setEnabled(false);
