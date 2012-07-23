@@ -81,6 +81,9 @@ public class IDResolver
 	private static Boolean wasBlockInited = false;
 	private static Boolean wasItemInited = false;
 	private static WidgetSimplewindow[] windows;
+	private static Class baseModClass;
+	private static StackTraceElement[] lastStackTrace;
+	private static int lastStackTraceID;
 	
 	static
 	{
@@ -96,6 +99,17 @@ public class IDResolver
 		{
 			throw new RuntimeException("IDResolver - Unable to create logger!", e);
 		}
+		
+		baseModClass = BaseMod.class;
+		try
+		{
+			baseModClass = cpw.mods.fml.common.modloader.BaseMod.class;
+		}
+		catch (Throwable e)
+		{
+			IDResolver.getLogger().log(Level.INFO,"IDResolver - Unable to detect FML: ID Resolver will only check ModLoader style BaseMods.");
+		}
+		
 		IDResolver.settingsComment = "IDResolver Known / Set IDs file. Please do not edit manually.";
 		IDResolver.overridesEnabled = true;
 		IDResolver.autoAssignMod = null;
@@ -907,8 +921,21 @@ public class IDResolver
 	
 	private static String getLongBlockName(Block block, int originalrequestedID)
 	{
+		
 		String name = Integer.toString(originalrequestedID) + "|";
-		StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
+		StackTraceElement[] stacktrace = null;
+		
+		if(lastStackTraceID == originalrequestedID)
+		{
+			stacktrace = lastStackTrace;
+		}
+		else
+		{
+			IDResolver.getLogger().log(Level.WARNING, "IDResolver - Cached StackTrace is for a different block! Generating new StackTrace...");
+			stacktrace = Thread.currentThread().getStackTrace();
+		}
+		lastStackTrace = null;
+		lastStackTraceID = -1;
 		int bestguess = -1;
 		for (int i = 1; i < stacktrace.length; i++)
 		{
@@ -932,7 +959,7 @@ public class IDResolver
 			{
 				bestguess = i;
 			}
-			if (BaseMod.class.isAssignableFrom(exceptionclass))
+			if (baseModClass.isAssignableFrom(exceptionclass))
 			{
 				bestguess = i;
 				break;
@@ -951,7 +978,19 @@ public class IDResolver
 	private static String getLongItemName(Item item, int originalrequestedID)
 	{
 		String name = Integer.toString(originalrequestedID) + "|";
-		StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
+		StackTraceElement[] stacktrace = null;
+		
+		if(lastStackTraceID == originalrequestedID)
+		{
+			stacktrace = lastStackTrace;
+		}
+		else
+		{
+			IDResolver.getLogger().log(Level.WARNING, "IDResolver - Cached StackTrace is for a different item! Generating new StackTrace...");
+			stacktrace = Thread.currentThread().getStackTrace();
+		}
+		lastStackTrace = null;
+		lastStackTraceID = -1;
 		int bestguess = -1;
 		for (int i = 1; i < stacktrace.length; i++)
 		{
@@ -975,11 +1014,12 @@ public class IDResolver
 			{
 				bestguess = i;
 			}
-			if (BaseMod.class.isAssignableFrom(exceptionclass))
+			if (baseModClass.isAssignableFrom(exceptionclass))
 			{
 				bestguess = i;
 				break;
 			}
+			
 		}
 		if (bestguess == -1)
 		{
@@ -1136,18 +1176,19 @@ public class IDResolver
 	
 	private static Boolean isModObject(int id, boolean isBlock)
 	{
-		StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
+		lastStackTraceID = id;
+		lastStackTrace = Thread.currentThread().getStackTrace();
 		boolean possibleVanilla = false;
-		for (int i = 1; i < stacktrace.length; i++)
+		for (int i = 1; i < lastStackTrace.length; i++)
 		{
 			try
 			{
-				Class classType = Class.forName(stacktrace[i].getClassName());
-				if (BaseMod.class.isAssignableFrom(classType))
+				Class classType = Class.forName(lastStackTrace[i].getClassName());
+				if (baseModClass.isAssignableFrom(classType))
 				{
 					return true;
 				}
-				if ("<clinit>".equals(stacktrace[i].getMethodName())
+				if ("<clinit>".equals(lastStackTrace[i].getMethodName())
 						&& (isBlock ? Block.class == classType : Item.class == classType))
 				{
 					possibleVanilla = true;
