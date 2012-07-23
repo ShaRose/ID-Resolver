@@ -81,7 +81,6 @@ public class IDResolver
 	private static Boolean wasBlockInited = false;
 	private static Boolean wasItemInited = false;
 	private static WidgetSimplewindow[] windows;
-	private static Class baseModClass;
 	private static StackTraceElement[] lastStackTrace;
 	private static int lastStackTraceID;
 	
@@ -99,17 +98,6 @@ public class IDResolver
 		{
 			throw new RuntimeException("IDResolver - Unable to create logger!", e);
 		}
-		
-		baseModClass = BaseMod.class;
-		try
-		{
-			baseModClass = cpw.mods.fml.common.modloader.BaseMod.class;
-		}
-		catch (Throwable e)
-		{
-			IDResolver.getLogger().log(Level.INFO,"IDResolver - Unable to detect FML: ID Resolver will only check ModLoader style BaseMods.");
-		}
-		
 		IDResolver.settingsComment = "IDResolver Known / Set IDs file. Please do not edit manually.";
 		IDResolver.overridesEnabled = true;
 		IDResolver.autoAssignMod = null;
@@ -959,7 +947,7 @@ public class IDResolver
 			{
 				bestguess = i;
 			}
-			if (baseModClass.isAssignableFrom(exceptionclass))
+			if (BaseMod.class.isAssignableFrom(exceptionclass))
 			{
 				bestguess = i;
 				break;
@@ -1014,7 +1002,7 @@ public class IDResolver
 			{
 				bestguess = i;
 			}
-			if (baseModClass.isAssignableFrom(exceptionclass))
+			if (BaseMod.class.isAssignableFrom(exceptionclass))
 			{
 				bestguess = i;
 				break;
@@ -1184,7 +1172,7 @@ public class IDResolver
 			try
 			{
 				Class classType = Class.forName(lastStackTrace[i].getClassName());
-				if (baseModClass.isAssignableFrom(classType))
+				if (BaseMod.class.isAssignableFrom(classType))
 				{
 					return true;
 				}
