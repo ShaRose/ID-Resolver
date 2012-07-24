@@ -519,6 +519,14 @@ public class IDResolver
 					if(itemName != null && !("item.".equals(itemName)))
 					{
 						String languageName = StatCollector.translateToLocal(itemName + ".name");
+						if(languageName == null)
+						{
+							bestName = itemName;
+							if(bestName.endsWith(".name"))
+								bestName = bestName.substring(bestName.length()-5);
+							if(bestName.startsWith("item.") || bestName.startsWith("tile."))
+								bestName = bestName.substring(5);
+						}
 						bestName = (languageName == null ? itemName : languageName);
 					}
 				}
