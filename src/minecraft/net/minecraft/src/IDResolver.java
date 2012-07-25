@@ -977,7 +977,7 @@ public class IDResolver
 			name += "IDRESOLVER_UNKNOWN_BLOCK_" + block.getClass().getName();
 		} else
 		{
-			name += IDResolver.trimMCP(stacktrace[bestguess].getClassName());
+			name += IDResolver.trimPackage(stacktrace[bestguess].getClassName());
 		}
 		return name;
 	}
@@ -1033,7 +1033,7 @@ public class IDResolver
 			name += "IDRESOLVER_UNKNOWN_BLOCK_" + item.getClass().getName();
 		} else
 		{
-			name += IDResolver.trimMCP(stacktrace[bestguess].getClassName());
+			name += IDResolver.trimPackage(stacktrace[bestguess].getClassName());
 		}
 		return name;
 	}
@@ -1585,11 +1585,11 @@ public class IDResolver
 						String originalpos = IDResolver.getInfoFromSaveString(IDEntry)[0];
 						if (isBlock)
 						{
-							name = "Unnamed " + IDResolver.trimMCP(Block.blocksList[x].getClass().getName())
+							name = "Unnamed " + IDResolver.trimPackage(Block.blocksList[x].getClass().getName())
 									+ " originally at " + originalpos;
 						} else
 						{
-							name = "Unnamed " + IDResolver.trimMCP(Item.itemsList[x].getClass().getName())
+							name = "Unnamed " + IDResolver.trimPackage(Item.itemsList[x].getClass().getName())
 									+ " originally at " + originalpos;
 						}
 					}
@@ -2004,13 +2004,11 @@ public class IDResolver
 		IDResolver.reLoadModGui();
 	}
 	
-	private static String trimMCP(String name)
+	private static String trimPackage(String name)
 	{
-		if (name.startsWith("net.minecraft.src"))
-		{
-			name = name.substring(18);
-		}
-		return name;
+		if(name.indexOf('.') == -1)
+			return name;
+		return name.substring(name.lastIndexOf('.') + 1);
 	}
 	
 	private static String trimType(String input, boolean block)
