@@ -519,15 +519,18 @@ public class IDResolver
 					if(itemName != null && !("item.".equals(itemName)))
 					{
 						String languageName = StatCollector.translateToLocal(itemName + ".name");
-						if(languageName == null)
+						if(languageName == null || ((languageName.startsWith("item.") || languageName.startsWith("tile.")) && languageName.endsWith(".name")))
 						{
 							bestName = itemName;
 							if(bestName.endsWith(".name"))
-								bestName = bestName.substring(bestName.length()-5);
+								bestName = bestName.substring(0,bestName.length()-5);
 							if(bestName.startsWith("item.") || bestName.startsWith("tile."))
 								bestName = bestName.substring(5);
 						}
-						bestName = (languageName == null ? itemName : languageName);
+						else
+						{
+							bestName = languageName;
+						}
 					}
 				}
 				
@@ -628,6 +631,10 @@ public class IDResolver
 					totalRegisteredBlocks++;
 					itemName = block.getBlockName();
 					transName = StatCollector.translateToLocal(itemName + ".name");
+					if(transName.endsWith(".name"))
+						transName = transName.substring(0,transName.length()-5);
+					if(transName.startsWith("item.") || transName.startsWith("tile."))
+						transName = transName.substring(5);
 					className = block.getClass().getName();
 					break;
 				}
@@ -642,6 +649,10 @@ public class IDResolver
 					totalRegisteredItems++;
 					itemName = item.getItemName();
 					transName = StatCollector.translateToLocal(itemName + ".name");
+						if(transName.endsWith(".name"))
+							transName = transName.substring(0,transName.length()-5);
+						if(transName.startsWith("item.") || transName.startsWith("tile."))
+							transName = transName.substring(5);
 					className = item.getClass().getName();
 					break;
 				}
@@ -1568,10 +1579,6 @@ public class IDResolver
 					if ((name != null) && (name.length() != 0))
 					{
 						name = StatCollector.translateToLocal(name);
-						if ((name == null) || (name.length() == 0))
-						{
-							name = IDResolver.getItemNameForStack(stack);
-						}
 					}
 					if ((name == null) || (name.length() == 0))
 					{
