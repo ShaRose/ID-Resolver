@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="WINDOWS-1252" standalone="no"?>
+<jardesc>
+    <jar path="../Output/IDResolver.jar"/>
+    <options buildIfNeeded="true" compress="true" descriptionLocation="/Minecraft/IDResolverExport.jardesc" exportErrors="true" exportWarnings="true" includeDirectoryEntries="false" overwrite="false" saveDescription="true" storeRefactorings="false" useSourceFolders="false"/>
+    <storedRefactorings deprecationInfo="true" structuralOnly="false"/>
+    <selectedProjects/>
+    <manifest generateManifest="false" manifestLocation="/Minecraft/manifest.mf" manifestVersion="1.0" reuseManifest="false" saveManifest="false" usesManifest="true">
+        <sealing sealJar="false">
+            <packagesToSeal/>
+            <packagesToUnSeal/>
+        </sealing>
+    </manifest>
+    <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
+        <javaElement handleIdentifier="=Minecraft/src&lt;sharose.mods.idresolver{IDResolver.java"/>
+        <file path="/Minecraft/src/mcmod.info"/>
+        <javaElement handleIdentifier="=Minecraft/src&lt;sharose.mods.idresolver{mod_IDResolver.java"/>
+        <javaElement handleIdentifier="=Minecraft/src&lt;sharose.mods.idresolver.Patcher"/>
+        <javaElement handleIdentifier="=Minecraft/src&lt;sharose.mods.idresolver{IDResolverCorePlugin.java"/>
+    </selectedElements>
+</jardesc>

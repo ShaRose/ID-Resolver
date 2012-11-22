@@ -3,11 +3,22 @@
 *
 #allow gitignore
 !.gitignore
-#allow IDResolver.java
-!src/minecraft/net/minecraft/src/IDResolver.java
-#allow mod_IDResolver.java
-!src/minecraft/net/minecraft/src/mod_IDResolver.java
+#allow mcmod.info
+!src
+!src/minecraft/
+!src/minecraft/mcmod.info
+#allow ID resolver files
+!src/minecraft/sharose/
+!src/minecraft/sharose/mods/
+!src/minecraft/sharose/mods/idresolver/
+!src/minecraft/sharose/mods/idresolver/*
+!src/minecraft/sharose/mods/idresolver/Patcher/
+!src/minecraft/sharose/mods/idresolver/Patcher/*
+#allow the manifest
+!eclipse/
+!eclipse/Minecraft/
+!eclipse/Minecraft/manifest.mf
+#allow the jar export desc
+!eclipse/Minecraft/IDResolverExport.jardesc
 #allow readme
 !readme.md
-#allow test mods
-!src/minecraft/net/minecraft/src/mod_TestMod*.java

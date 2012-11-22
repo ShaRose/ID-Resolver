@@ -1,0 +1,12 @@
+[
+{
+  "modid": "mod_IDResolver",
+  "name": "ID Resolver",
+  "description": "Utility designed to make BlockID and ItemID conflicts easy to find and resolve, without crashing!",
+  "version": "1.4.4",
+  "mcversion": "1.4.4",
+  "url": "http://www.minecraftforum.net/topic/366377-IDResolver/",
+  "updateUrl": "http://www.minecraftforum.net/topic/366377-IDResolver/",
+  "authors": ["ShaRose"]
+}
+]
