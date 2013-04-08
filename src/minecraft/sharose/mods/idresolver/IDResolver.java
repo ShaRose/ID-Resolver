@@ -12,9 +12,7 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,37 +31,24 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 
+import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
-import net.minecraft.src.BaseMod;
-import net.minecraft.src.Block;
-import net.minecraft.src.GuiApiHelper;
-import net.minecraft.src.GuiModScreen;
-import net.minecraft.src.GuiWidgetScreen;
-import net.minecraft.src.Item;
-import net.minecraft.src.ItemArmor;
-import net.minecraft.src.ItemBlock;
-import net.minecraft.src.ItemFood;
-import net.minecraft.src.ItemStack;
-import net.minecraft.src.ModAction;
-import net.minecraft.src.ModSettingScreen;
-import net.minecraft.src.SettingBoolean;
-import net.minecraft.src.SettingInt;
-import net.minecraft.src.SettingList;
-import net.minecraft.src.StatCollector;
-import net.minecraft.src.WidgetBoolean;
-import net.minecraft.src.WidgetInt;
-import net.minecraft.src.WidgetItem2DRender;
-import net.minecraft.src.WidgetList;
-import net.minecraft.src.WidgetSimplewindow;
-import net.minecraft.src.WidgetSingleRow;
-import net.minecraft.src.WidgetSinglecolumn;
-import net.minecraft.src.WidgetTick;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemArmor;
+import net.minecraft.item.ItemBlock;
+import net.minecraft.item.ItemFood;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.StatCollector;
 
 import org.lwjgl.Sys;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
-import cpw.mods.fml.common.Mod;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
+
+import sharose.mods.guiapi.*;
+
 import de.matthiasmann.twl.Button;
 import de.matthiasmann.twl.Color;
 import de.matthiasmann.twl.Label;
@@ -85,13 +70,22 @@ import de.matthiasmann.twl.renderer.lwjgl.RenderScale;
  *         much everything besides patching and the tick stuff in the
  *         mod_IDResolver class.
  */
-public class IDResolver {
+@SideOnly(Side.CLIENT)
+public class IDResolver extends IDResolverBasic {
+	static
+	{
+		if(IDResolverCorePlugin.isServer)
+		{
+			throw new RuntimeException("IDResolver.class should NEVER be loaded on a server instance.");
+		}
+	}
+	
 	private static String[] armorTypes = new String[] { "Helmet", "Chestplate",
 			"Leggings", "Boots" };
 
 	private static Boolean attemptedRecover = false;
 	private static String autoAssignMod;
-	private static Field blockIdField;
+	
 	private static SettingBoolean checkForLooseSettings = null;
 	private static String extraInfo = null;
 	private static File idPath;
@@ -100,35 +94,27 @@ public class IDResolver {
 	 * Display ID Status menu.
 	 */
 	private static Hashtable<Integer, String> idToMod = null;
-	private static boolean initialized;
-	private static Field itemIdField;
-	private static Properties knownIDs;
 	private static final String langLooseSettingsFound = "ID resolver has found some loose settings that aren't being used. Would you like to view a menu to remove them?";
 	private static final String langMinecraftShuttingDown = "Minecraft is shutting down, but ID Resolver did not attempt to do so. It is probably due to another exception, such as not enough sprite indexes. In some cases mods will attempt to shut down Minecraft due to possible ID conflicts, and don't check for ID resolver, so ID resolver will attempt to recover Minecraft. If this does not work, please check your ModLoader.txt and ID Resolver.txt for more information.";
 	/**
 	 * This shows all loaded entries: It's used for finding loose settings. If
 	 * it's in knownIDs but isn't here, it wasn't accessed yet.
 	 */
-	private static HashSet<String> loadedEntries = new HashSet<String>();
-	private static Logger logger;
+	protected static HashSet<String> loadedEntries = new HashSet<String>();
 	private static Properties modPriorities;
+	
 	private static ModSettingScreen modScreen;
-	private static boolean overridesEnabled;
 	private static File priorityPath;
-	private static String settingsComment;
+	
 	private static SettingBoolean showOnlyConf = null;
+	
 	private static SettingBoolean showTickMM = null;
+	
 	private static SettingBoolean showTickRS = null;
 	private static Boolean shutdown = false;
-	/**
-	 * Again, a quick lookup table for if an ID is vanilla or not.
-	 */
-	private static boolean[] vanillaIDs = new boolean[35840];
-	private static Boolean wasBlockInited = false;
-	private static Boolean wasItemInited = false;
+	
 	private static WidgetSimplewindow[] windows;
-	private static StackTraceElement[] lastStackTrace;
-	private static int lastStackTraceID;
+
 	/**
 	 * Is ID Resolver doing 'streaming' right now? This should only be true
 	 * during actual MC init.
@@ -148,14 +134,13 @@ public class IDResolver {
 	 * Set to true if the config files were created during load: this way it
 	 * knows to ask you on start.
 	 */
+	
 	private static boolean isFirstStart = false;
 	
 	private static int firstOpenBlockCache = 0;
 	private static int firstOpenItemCache = 0;
 	private static int lastOpenBlockCache = 0;
 	private static int lastOpenItemCache = 0;
-	
-	private static int autoAssignBlockLast = -1;
 	
 	static {
 		IDResolver.logger = Logger.getLogger("IDResolver");
@@ -168,11 +153,7 @@ public class IDResolver {
 		} catch (Throwable e) {
 			throw new RuntimeException("Unable to create logger!", e);
 		}
-		IDResolver.settingsComment = "IDResolver Known / Set IDs file. Please do not edit manually.";
-		IDResolver.overridesEnabled = true;
 		IDResolver.autoAssignMod = null;
-		IDResolver.initialized = false;
-		IDResolver.setupOverrides();
 		IDResolver.addModGui();
 	}
 
@@ -180,6 +161,7 @@ public class IDResolver {
 	 * Sets up the mod screen, and then calls reloadIDs, which makes sure
 	 * everything is up to date.
 	 */
+	
 	private static void addModGui() {
 		IDResolver.modScreen = new ModSettingScreen("ID Resolver");
 		IDResolver.modScreen.setSingleColumn(true);
@@ -211,6 +193,7 @@ public class IDResolver {
 	 * @param isBlock
 	 *            If it's a block or not.
 	 */
+	
 	private static void buildItemInfo(StringBuilder builder, int index,
 			boolean isBlock) {
 		Item item = Item.itemsList[index];
@@ -316,6 +299,7 @@ public class IDResolver {
 	/**
 	 * @return True if I should check for loose settings after loading.
 	 */
+	
 	private static boolean checkForLooseSettings() {
 		if (!IDResolver.modPriorities.containsKey("CheckForLooseSettings")) {
 			IDResolver.modPriorities.setProperty("CheckForLooseSettings",
@@ -338,6 +322,7 @@ public class IDResolver {
 	/**
 	 * Just used by the Check Loose IDs button.
 	 */
+	
 	@SuppressWarnings("unused")
 	private static void checkLooseIDs() {
 		IDResolver.getLogger().log(Level.INFO,
@@ -352,6 +337,7 @@ public class IDResolver {
 	 *            True if it was done after load: False otherwise. This way if
 	 *            you used the button it won't ask "don't show this again".
 	 */
+	
 	public static void checkLooseSettings(boolean automatic) {
 		if (IDResolver.checkForLooseSettings() || !automatic) {
 			ArrayList<String> unusedIDs = IDResolver.checkUnusedIDs();
@@ -427,6 +413,7 @@ public class IDResolver {
 	/**
 	 * @return The list of unused IDs, by signature.
 	 */
+	
 	public static ArrayList<String> checkUnusedIDs() {
 		ArrayList<String> unused = new ArrayList<String>();
 		for (Entry<Object, Object> entry : IDResolver.knownIDs.entrySet()) {
@@ -444,6 +431,7 @@ public class IDResolver {
 	/**
 	 * Clears out ALL saved IDs. Priorities are left alone.
 	 */
+	
 	@SuppressWarnings("unused")
 	private static void clearAllIDs() {
 		IDResolver.getLogger().log(Level.INFO,
@@ -525,6 +513,7 @@ public class IDResolver {
 	 * Generates, and shows, the Display ID status menu, which is that big list
 	 * of items and blocks. Shows a renderer, metadata info, etc etc.
 	 */
+	
 	@SuppressWarnings("unused")
 	private static void displayIDStatus() {
 		IDResolver.getLogger().log(Level.INFO,
@@ -672,6 +661,7 @@ public class IDResolver {
 	 * 
 	 * @return The report.
 	 */
+	
 	private static String generateIDMappingReport() {
 		StringBuilder report = new StringBuilder();
 		String linebreak = System.getProperty("line.separator");
@@ -714,7 +704,7 @@ public class IDResolver {
 				boolean type = IDResolver.isBlockType(entry.getKey());
 				Item entryItem = Item.itemsList[entry.getValue()];
 				if (entryItem != null) {
-					String itemName = entryItem.getItemName();
+					String itemName = entryItem.getUnlocalizedName();
 					if (itemName != null && !("item.".equals(itemName))) {
 						String languageName = StatCollector
 								.translateToLocal(itemName + ".name");
@@ -755,6 +745,7 @@ public class IDResolver {
 	 *            The type of report.
 	 * @return The report.
 	 */
+	
 	private static String generateIDStatusReport(int showFree) {
 		if (showFree == 3) {
 			return generateIDMappingReport();
@@ -765,7 +756,7 @@ public class IDResolver {
 		report.append("Generated on " + new Date().toString())
 				.append(linebreak).append(linebreak);
 
-		boolean checkClean = Block.blocksList.length != Item.shovelSteel.shiftedIndex;
+		boolean checkClean = Block.blocksList.length != Item.shovelSteel.itemID;
 		int totalRegisteredBlocks = 1;
 		int totalUncleanBlockSlots = 0;
 		int totalRegisteredItems = 0;
@@ -835,7 +826,7 @@ public class IDResolver {
 			case 1: {
 				Block block = Block.blocksList[i];
 				totalRegisteredBlocks++;
-				itemName = block.getBlockName();
+				itemName = block.getUnlocalizedName();
 				transName = StatCollector.translateToLocal(itemName + ".name");
 				if (transName.endsWith(".name"))
 					transName = transName.substring(0, transName.length() - 5);
@@ -852,7 +843,7 @@ public class IDResolver {
 
 				Item item = Item.itemsList[i];
 				totalRegisteredItems++;
-				itemName = item.getItemName();
+				itemName = item.getUnlocalizedName();
 				transName = StatCollector.translateToLocal(itemName + ".name");
 				if (transName.endsWith(".name"))
 					transName = transName.substring(0, transName.length() - 5);
@@ -885,7 +876,7 @@ public class IDResolver {
 		report.append(
 				String.format("Item ID Status: %d/%d used. %d available.",
 						totalRegisteredItems, Item.itemsList.length,
-						(Item.itemsList.length - Item.shovelSteel.shiftedIndex)
+						(Item.itemsList.length - Item.shovelSteel.itemID)
 								- totalRegisteredItems)).append(linebreak)
 				.append(linebreak);
 		report.append(
@@ -1060,6 +1051,7 @@ public class IDResolver {
 	 * @return The first open BlockID. (This checks for saved signatures as
 	 *         well!)
 	 */
+	
 	private int getFirstOpenBlock() {
 		int start = 1;
 		if(firstOpenBlockCache != 0)
@@ -1085,8 +1077,9 @@ public class IDResolver {
 	 * @return The first open ItemID. (This checks for saved signatures as
 	 *         well!)
 	 */
+	
 	private int getFirstOpenItem() {
-		int start = Item.shovelSteel.shiftedIndex;
+		int start = 1024;
 		if(firstOpenItemCache != 0)
 		{
 			start = firstOpenItemCache;
@@ -1141,12 +1134,13 @@ public class IDResolver {
 	 *            The ItemStack.
 	 * @return The name, or an empty string if there's an issue getting one.
 	 */
+	
 	private static String getItemNameForStack(ItemStack stack) {
 		if (stack.getItem() == null) {
 			return "";
 		}
 		try {
-			return stack.getItem().getItemNameIS(stack);
+			return stack.getItem().getLocalizedName(stack);
 		} catch (Throwable e) {
 			return "";
 		}
@@ -1156,6 +1150,7 @@ public class IDResolver {
 	 * @return the LAST open BlockID. (This checks for saved signatures as
 	 *         well!)
 	 */
+	
 	private int getLastOpenBlock() {
 		int start = Block.blocksList.length - 1;
 		if(this.hasCustomMaxID)
@@ -1181,6 +1176,7 @@ public class IDResolver {
 	/**
 	 * @return the LAST open ItemID. (This checks for saved signatures as well!)
 	 */
+	
 	private int getLastOpenItem() {
 		int start = Item.itemsList.length - 1;
 		if(this.hasCustomMaxID)
@@ -1192,7 +1188,7 @@ public class IDResolver {
 		{
 			start = lastOpenItemCache;
 		}
-		for (int i = start; i >= Item.shovelSteel.shiftedIndex; i--) {
+		for (int i = start; i >= Item.shovelSteel.itemID; i--) {
 			if (!IDResolver.isSlotFree(i)) {
 				continue;
 			}
@@ -1210,164 +1206,11 @@ public class IDResolver {
 		return IDResolver.logger;
 	}
 
-	/**
-	 * gets the 'long' block name, or, more correctly, the block signature. This
-	 * is done by walking a stacktrace, either the stored one from earlier or a
-	 * new one it generates.
-	 * 
-	 * @param block
-	 *            the Block itself.
-	 * @param originalrequestedID
-	 *            The requested ID.
-	 * @return The signature.
-	 */
-	private static String getLongBlockName(Block block, int originalrequestedID) {
+	
 
-		String name = Integer.toString(originalrequestedID) + "|";
-		StackTraceElement[] stacktrace = null;
+	
 
-		if (lastStackTraceID == originalrequestedID) {
-			stacktrace = lastStackTrace;
-		} else {
-			IDResolver
-					.getLogger()
-					.log(Level.WARNING,
-							"Cached StackTrace is for a different block! Generating new StackTrace...");
-			stacktrace = Thread.currentThread().getStackTrace();
-		}
-		lastStackTrace = null;
-		lastStackTraceID = -1;
-		int bestguess = -1;
-		for (int i = 1; i < stacktrace.length; i++) {
-			Class<?> exceptionclass = null;
-			try {
-				exceptionclass = Class.forName(stacktrace[i].getClassName());
-			} catch (Throwable e) {
-				continue;
-			}
-			if (Block.class.isAssignableFrom(exceptionclass)) {
-				continue;
-			}
-			if (IDResolver.class.isAssignableFrom(exceptionclass)) {
-				continue;
-			}
-			if (bestguess == -1) {
-				bestguess = i;
-			}
-			if (BaseMod.class.isAssignableFrom(exceptionclass)) {
-				bestguess = i;
-				break;
-			}
-			if (exceptionclass.isAnnotationPresent(Mod.class)) {
-				bestguess = i;
-				break;
-			}
-
-		}
-		if (bestguess == -1) {
-			name += "IDRESOLVER_UNKNOWN_OBJECT_" + block.getClass().getName();
-		} else {
-			name += stacktrace[bestguess]
-						.getClassName();
-		}
-		return name;
-	}
-
-	/**
-	 * gets the 'long' item name, or, more correctly, the item signature. This
-	 * is done by walking a stacktrace, either the stored one from earlier or a
-	 * new one it generates.
-	 * 
-	 * @param item
-	 *            the Item itself.
-	 * @param originalrequestedID
-	 *            The requested ID.
-	 * @return The signature.
-	 */
-	private static String getLongItemName(Item item, int originalrequestedID) {
-		String name = Integer.toString(originalrequestedID) + "|";
-		StackTraceElement[] stacktrace = null;
-
-		if (lastStackTraceID == originalrequestedID) {
-			stacktrace = lastStackTrace;
-		} else {
-			IDResolver
-					.getLogger()
-					.log(Level.WARNING,
-							"Cached StackTrace is for a different item! Generating new StackTrace...");
-			stacktrace = Thread.currentThread().getStackTrace();
-		}
-		lastStackTrace = null;
-		lastStackTraceID = -1;
-		int bestguess = -1;
-		for (int i = 1; i < stacktrace.length; i++) {
-			Class<?> exceptionclass = null;
-			try {
-				exceptionclass = Class.forName(stacktrace[i].getClassName());
-			} catch (Throwable e) {
-				continue;
-			}
-			if (Item.class.isAssignableFrom(exceptionclass)) {
-				continue;
-			}
-			if (IDResolver.class.isAssignableFrom(exceptionclass)) {
-				continue;
-			}
-			if (bestguess == -1) {
-				bestguess = i;
-			}
-			if (BaseMod.class.isAssignableFrom(exceptionclass)) {
-				bestguess = i;
-				break;
-			}
-			if (exceptionclass.isAnnotationPresent(Mod.class)) {
-				bestguess = i;
-				break;
-			}
-
-		}
-		if (bestguess == -1) {
-			name += "IDRESOLVER_UNKNOWN_OBJECT_" + item.getClass().getName();
-		} else {
-				name += stacktrace[bestguess]
-						.getClassName();
-		}
-		return name;
-	}
-
-	/**
-	 * Helper that calls either getLongBlockName or getLongItemName depending on
-	 * which is needed. Or, if it's neither, throws an exception and stuff. This
-	 * also sets if an entry was loaded.
-	 * 
-	 * @param obj
-	 *            the Object (Block or Item only)
-	 * @param ID
-	 *            the requested ID.
-	 * @return The name.
-	 */
-	private static String getlongName(Object obj, int ID) {
-		String name = null;
-		if (obj instanceof Block) {
-			name = "BlockID." + IDResolver.getLongBlockName((Block) obj, ID);
-		}
-		if (obj instanceof Item) {
-			name = "ItemID." + IDResolver.getLongItemName((Item) obj, ID);
-		}
-		IDResolver.loadedEntries.add(name);
-		if (name != null) {
-			return name;
-		}
-		if (obj == null) {
-			throw new RuntimeException(
-					"You should never see this. For some reason, ID resolver attempted to get an item name for null.");
-		}
-		throw new RuntimeException(
-				"You should never see this. For some reason, ID resolver attempted to get an item name a non-item / block. It is of type '"
-						+ obj.getClass().getName()
-						+ "'. The toString is: "
-						+ obj.toString());
-	}
+	
 
 	/**
 	 * Helper for getting a mod's priority level. If there isn't a saved one it
@@ -1406,7 +1249,7 @@ public class IDResolver {
 		if (i >= Block.blocksList.length) {
 			position = 2;
 		} else {
-			if (i >= Item.shovelSteel.shiftedIndex) {
+			if (i >= Item.shovelSteel.itemID) {
 				position = 1;
 			}
 		}
@@ -1474,6 +1317,7 @@ public class IDResolver {
 	/**
 	 * Button helper.
 	 */
+	
 	@SuppressWarnings("unused")
 	private static void ignoreLooseDetectionAndDisable() {
 		IDResolver.checkForLooseSettings.set(false);
@@ -1516,45 +1360,7 @@ public class IDResolver {
 		throw new InvalidParameterException("Input is not fully named!");
 	}
 
-	/**
-	 * Internal method to scanning the stack to see if an Item or Block is a
-	 * vanilla addition or not. This also sets the vanilla array.
-	 * 
-	 * @param id
-	 *            the Original ID. Used for cache sanity checks later.
-	 * @param isBlock
-	 *            Whether to check for a Block or an Item.
-	 * @return True if it's a mod object, false if not.
-	 */
-	private static boolean isModObject(int id, boolean isBlock) {
-		lastStackTraceID = id;
-		lastStackTrace = Thread.currentThread().getStackTrace();
-		boolean possibleVanilla = false;
-		for (int i = 1; i < lastStackTrace.length; i++) {
-			try {
-				Class classType = Class.forName(lastStackTrace[i]
-						.getClassName());
-				if (BaseMod.class.isAssignableFrom(classType)) {
-					return true;
-				}
-				if (classType.isAnnotationPresent(Mod.class)) {
-					return true;
-				}
-				if ("<clinit>".equals(lastStackTrace[i].getMethodName())
-						&& (isBlock ? Block.class == classType
-								: Item.class == classType)) {
-					possibleVanilla = true;
-				}
-			} catch (Throwable e) {
-				// Should never happen, but in this case just going to coast
-				// right over it.
-			}
-		}
-		if (possibleVanilla) {
-			IDResolver.vanillaIDs[id] = true;
-		}
-		return false;
-	}
+	
 
 	/**
 	 * @param i
@@ -1579,6 +1385,7 @@ public class IDResolver {
 	 * @param url
 	 *            the URL to call.
 	 */
+	
 	@SuppressWarnings("unused")
 	private static void linkCallback(String url) {
 		IDResolver.getLogger().log(Level.INFO,
@@ -1599,6 +1406,7 @@ public class IDResolver {
 	 * @param modName
 	 * @param textarea
 	 */
+	
 	@SuppressWarnings("unused")
 	private static void lowerModPriorityFromMenu(String modName,
 			TextArea textarea) {
@@ -1648,10 +1456,6 @@ public class IDResolver {
 		tempBoolean = Block.canBlockGrass[currentID];
 		Block.canBlockGrass[currentID] = Block.canBlockGrass[newID];
 		Block.canBlockGrass[newID] = tempBoolean;
-
-		tempBoolean = Block.requiresSelfNotify[currentID];
-		Block.requiresSelfNotify[currentID] = Block.requiresSelfNotify[newID];
-		Block.requiresSelfNotify[newID] = tempBoolean;
 
 		tempBoolean = Block.useNeighborBrightness[currentID];
 		Block.useNeighborBrightness[currentID] = Block.useNeighborBrightness[newID];
@@ -1704,6 +1508,7 @@ public class IDResolver {
 		IDResolver.idToMod = null;
 	}
 
+	
 	private static String raiseModPriority(String modname) {
 		String newlevel = Integer
 				.toString(IDResolver.getModPriority(modname) + 1);
@@ -1712,6 +1517,7 @@ public class IDResolver {
 		return newlevel;
 	}
 
+	
 	@SuppressWarnings("unused")
 	private static void raiseModPriorityFromMenu(String modName,
 			TextArea textarea) {
@@ -1730,7 +1536,7 @@ public class IDResolver {
 		}
 	}
 
-	private static void reloadIDs() {
+	protected static void reloadIDs() {
 		try {
 			if (streamingOutputStream != null) {
 				streamingOutputStream.close();
@@ -2227,7 +2033,8 @@ public class IDResolver {
 		IDResolver.reLoadModGui();
 	}
 
-	public static void removeSettingByKey(String key) {
+	@SuppressWarnings("unused")
+	private static void removeSettingByKey(String key) {
 		if (IDResolver.knownIDs.containsKey(key)) {
 			IDResolver.knownIDs.remove(key);
 		}
@@ -2292,36 +2099,6 @@ public class IDResolver {
 		}
 	}
 
-	private static void setupOverrides() {
-		int pubfinalmod = Modifier.FINAL + Modifier.PUBLIC;
-		try {
-			for (Field field : Block.class.getFields()) {
-				if ((field.getModifiers() == pubfinalmod)
-						&& (field.getType() == int.class)) {
-					IDResolver.blockIdField = field;
-					break;
-				}
-			}
-		} catch (Throwable e3) {
-			IDResolver.overridesEnabled = false;
-		}
-
-		try {
-			for (Field field : Item.class.getFields()) {
-				if ((field.getModifiers() == pubfinalmod)
-						&& (field.getType() == int.class)) {
-					IDResolver.itemIdField = field;
-					break;
-				}
-			}
-		} catch (Throwable e3) {
-			IDResolver.overridesEnabled = false;
-		}
-		if (IDResolver.overridesEnabled) {
-			IDResolver.blockIdField.setAccessible(true);
-			IDResolver.itemIdField.setAccessible(true);
-		}
-	}
 
 	@SuppressWarnings("unused")
 	private static void showMenu(Integer i) {
@@ -2369,7 +2146,7 @@ public class IDResolver {
 				"true");
 	}
 
-	public static void openMappingOutputStream() throws IOException {
+	private static void openMappingOutputStream() throws IOException {
 		if (streamingOutputStream != null) {
 			streamingOutputStream.close();
 			streamingOutputStream = null;
@@ -2422,7 +2199,7 @@ public class IDResolver {
 		}
 	}
 
-	public static String exportMappings() {
+	private static String exportMappings() {
 
 		String linebreak = System.getProperty("line.separator");
 		StringBuilder mappingsOutput = new StringBuilder(knownIDs.size() * 30);
@@ -2499,6 +2276,7 @@ public class IDResolver {
 
 	@SuppressWarnings("unused")
 	private static void trimLooseSettingsAll(ArrayList<String> unused) {
+		int unusedkeys = unused.size();
 		for (String key : unused) {
 			IDResolver.knownIDs.remove(key);
 			IDResolver.logger.log(Level.INFO, "Trimmed ID: " + key);
@@ -2511,10 +2289,12 @@ public class IDResolver {
 					e);
 		}
 		IDResolver.reLoadModGui();
+		GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack("Loose Setting Removal", "Cleared " + unusedkeys + " loose keys.", "Bask to menu", false));
 	}
 	
 	@SuppressWarnings("unused")
 	private static void trimLooseSettingsAutoLoaded(ArrayList<String> unused) {
+		int unusedkeys = 0;
 		Map<String, Boolean> classMap = new HashMap<String, Boolean>();
 		
 		for (String key : unused) {
@@ -2531,6 +2311,7 @@ public class IDResolver {
 			if (!classMap.get(classname)) {
 				IDResolver.knownIDs.remove(key);
 				IDResolver.logger.log(Level.INFO, "Trimmed ID: " + key);
+				unusedkeys++;
 			}
 		}
 		try {
@@ -2541,12 +2322,13 @@ public class IDResolver {
 					e);
 		}
 		IDResolver.reLoadModGui();
+		GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack("Loose Setting Removal", "Cleared " + unusedkeys + " loose keys.", "Bask to menu", false));
 	}
 
 	@SuppressWarnings("unused")
 	private static void trimLooseSettingsAutoUnLoaded(ArrayList<String> unused) {
 		Map<String, Boolean> classMap = new HashMap<String, Boolean>();
-		
+		int unusedkeys = 0;
 		for (String key : unused) {
 			String[] info = IDResolver.getInfoFromSaveString(key,false);
 			String classname = info[1];
@@ -2560,6 +2342,7 @@ public class IDResolver {
 			}
 			if (!classMap.get(classname)) {
 				IDResolver.knownIDs.remove(key);
+				unusedkeys++;
 				IDResolver.logger.log(Level.INFO, "Trimmed ID: " + key);
 			}
 		}
@@ -2571,6 +2354,7 @@ public class IDResolver {
 					e);
 		}
 		IDResolver.reLoadModGui();
+		GuiModScreen.show(GuiApiHelper.makeTextDisplayAndGoBack("Loose Setting Removal", "Cleared " + unusedkeys + " loose keys.", "Bask to menu", false));
 	}
 
 	private static String trimPackage(String name) {
@@ -2620,14 +2404,6 @@ public class IDResolver {
 		}
 	}
 
-	public static Boolean wasBlockInited() {
-		return IDResolver.wasBlockInited;
-	}
-
-	public static Boolean wasItemInited() {
-		return IDResolver.wasItemInited;
-	}
-
 	@SuppressWarnings("unused")
 	private static void wipeSavedIDsFromMenu(String modName) {
 		IDResolver.getLogger().log(Level.INFO,
@@ -2675,11 +2451,6 @@ public class IDResolver {
 	private WidgetItem2DRender resolveScreenLabelTooltipItem;
 	private Button resolveScreenOverride;
 	
-	//TODO: Enable
-	/*
-	private Button resolveScreenAutoAssignFromID;
-	private Button resolveScreenAutoAssignFromIDStrict;
-	*/
 	private GuiWidgetScreen widgetscreen;
 	private Minecraft mc;
 	private boolean running = false;
@@ -2817,13 +2588,6 @@ public class IDResolver {
 					+ Integer.toString(firstid) + " for " + getName());
 		}
 	}
-	
-	
-	private boolean autoAssignFromSelected(boolean strict) {
-		//TODO Finish this. Or start it. Whichever.
-		
-		return false;
-	}
 
 	@SuppressWarnings("unused")
 	private void autoAssignAll() {
@@ -2831,7 +2595,6 @@ public class IDResolver {
 				"User pressed 'AutoAssignAll' button.");
 		IDResolver.autoAssignMod = IDResolver
 				.getInfoFromSaveString(this.longName)[1];
-		IDResolver.autoAssignBlockLast = -1;
 		autoAssign(true, false);
 		displayMessage("Automatically assigning IDs...");
 	}
@@ -2842,30 +2605,7 @@ public class IDResolver {
 				"User pressed 'AutoAssignAllRev' button.");
 		IDResolver.autoAssignMod = "!"
 				+ IDResolver.getInfoFromSaveString(this.longName)[1];
-		IDResolver.autoAssignBlockLast = -1;
 		autoAssign(true, true);
-		displayMessage("Automatically assigning IDs...");
-	}
-	
-	@SuppressWarnings("unused")
-	private void autoAssignAllFromID() {
-		IDResolver.getLogger().log(Level.INFO,
-				"User pressed 'AutoAssignAllFromID' button.");
-		IDResolver.autoAssignMod = IDResolver
-				.getInfoFromSaveString(this.longName)[1];
-		IDResolver.autoAssignBlockLast = this.settingIntNewID.get();
-		autoAssignFromSelected(false);
-		displayMessage("Automatically assigning IDs...");
-	}
-
-	@SuppressWarnings("unused")
-	private void autoAssignAllFromIDStrict() {
-		IDResolver.getLogger().log(Level.INFO,
-				"User pressed 'AutoAssignAllFromIDStrict' button.");
-		IDResolver.autoAssignMod = "!"
-				+ IDResolver.getInfoFromSaveString(this.longName)[1];
-		IDResolver.autoAssignBlockLast = this.settingIntNewID.get();
-		autoAssignFromSelected(true);
 		displayMessage("Automatically assigning IDs...");
 	}
 	
@@ -2946,15 +2686,15 @@ public class IDResolver {
 			if ((name != null) && (name.length() != 0)) {
 				return name;
 			}
-			if (!IDResolver.hasStoredID(item.shiftedIndex, true)) {
+			if (!IDResolver.hasStoredID(item.itemID, true)) {
 				return IDResolver.getItemNameForStack(new ItemStack(item));
 			}
 		} catch (Throwable e) {
 			// Ignore this exception
 		}
 		String[] info = IDResolver.getInfoFromSaveString((IDResolver
-				.hasStoredID(item.shiftedIndex, false) ? IDResolver
-				.getStoredIDName(item.shiftedIndex, false, true) : IDResolver
+				.hasStoredID(item.itemID, false) ? IDResolver
+				.getStoredIDName(item.itemID, false, true) : IDResolver
 				.getLongItemName(item, this.originalID)));
 		return "ID " + info[0] + " (Class: " + item.getClass().getName()
 				+ ") from " + info[1];
@@ -2988,8 +2728,12 @@ public class IDResolver {
 		return name;
 	}
 
-	private int getStored() {
-		return Integer.parseInt(IDResolver.knownIDs.getProperty(this.longName));
+	protected boolean hasStored() {
+		return hasStored(this.longName);
+	}
+	
+	protected int getStored() {
+		return getStored(this.longName);
 	}
 
 	private String getTypeName() {
@@ -3001,9 +2745,7 @@ public class IDResolver {
 				.getFirstOpenItem()) != -1) || this.specialItem;
 	}
 
-	private boolean hasStored() {
-		return IDResolver.knownIDs.containsKey(this.longName);
-	}
+	
 
 	@SuppressWarnings("unused")
 	private void itemForceOverwrite() {
@@ -3248,15 +2990,7 @@ public class IDResolver {
 			boolean rev = IDResolver.autoAssignMod.startsWith("!");
 			if (IDResolver.getInfoFromSaveString(this.longName)[1]
 					.equals(IDResolver.autoAssignMod.substring(rev ? 1 : 0))) {
-				
-				if(IDResolver.autoAssignBlockLast == -1)
-				{
-					autoAssign(true, rev);
-				}
-				else
-				{
-					autoAssignFromSelected(rev);
-				}
+				autoAssign(true, rev);
 			}
 		}
 		if (!hasOpenSlot()) {
@@ -3286,7 +3020,7 @@ public class IDResolver {
 				showFirstStart();
 				this.restart = true;
 			}
-			mod_IDResolver.updateUsed();
+			IDResolverMod.updateUsed();
 			if (priority > 0) {
 				if (IDResolver.hasStoredID(this.settingIntNewID.defaultValue,
 						this.isBlock)) {
@@ -3346,7 +3080,7 @@ public class IDResolver {
 				this.widgetscreen.gui.update();
 				if ((fnt != null) && IDResolver.showTick(false)) {
 					this.widgetscreen.renderer.startRendering();
-					String[] ids = mod_IDResolver.getIDs();
+					String[] ids = IDResolverMod.getIDs();
 					for (int i = 0; i < ids.length; i++) {
 						fnt.drawText(null, 1, 12 + (i * 12), ids[i]);
 					}
@@ -3482,7 +3216,7 @@ public class IDResolver {
 			updateUI();
 			Font fnt = this.widgetscreen.theme.getDefaultFont();
 			restart = false;
-			mod_IDResolver.updateUsed();
+			IDResolverMod.updateUsed();
 			if (this.isMenu) {
 				if (this.mc.theWorld != null) {
 					displayMessage("You cannot modify IDs while in game. Please exit to main menu and try again.");
@@ -3497,7 +3231,7 @@ public class IDResolver {
 				modscreen.drawScreen(0, 0, 0);
 				if ((fnt != null) && IDResolver.showTick(false)) {
 					this.widgetscreen.renderer.startRendering();
-					String[] ids = mod_IDResolver.getIDs();
+					String[] ids = IDResolverMod.getIDs();
 					for (int i = 0; i < ids.length; i++) {
 						fnt.drawText(null, 1, 12 + (i * 12), ids[i]);
 					}
@@ -3656,7 +3390,7 @@ public class IDResolver {
 					.put(area, 0);
 			this.settingIntNewID = new SettingInt("New ID", RequestedID,
 					(this.isBlock || this.specialItem ? 1
-							: Item.shovelSteel.shiftedIndex), 1, getMaxID());
+							: Item.shovelSteel.itemID), 1, getMaxID());
 			this.settingIntNewID.defaultValue = RequestedID;
 			WidgetInt intdisplay = new WidgetInt(this.settingIntNewID, "New ID");
 			this.subscreenIDSetter.add(intdisplay);
@@ -3780,41 +3514,6 @@ public class IDResolver {
 
 				((WidgetSinglecolumn) this.subscreenIDSetter).heightOverrideExceptions
 						.put(button, 30);
-				
-				//TODO: Enable this later.
-				
-				/*
-				
-				this.resolveScreenAutoAssignFromID = GuiApiHelper.makeButton(
-						"Automatically assign an ID to All\r\nfrom this mod, from selected ID",
-						"autoAssignAllFromID", this, true);
-				this.subscreenIDSetter.add(this.resolveScreenAutoAssignFromID);
-				this.resolveScreenAutoAssignFromID.setTooltipContent(GuiApiHelper
-						.makeTextArea(
-								"This will flag a mod to automatically assign an ID starting from the selected ID, skipping to the next ID if needed.",
-								false));
-				((WidgetSinglecolumn) this.subscreenIDSetter).heightOverrideExceptions
-						.put(this.resolveScreenAutoAssignFromID, 30);
-
-				this.resolveScreenAutoAssignFromID.setEnabled(false);
-				
-				
-				this.resolveScreenAutoAssignFromIDStrict = GuiApiHelper
-						.makeButton(
-								"Automatically assign an ID to All\r\nfrom this mod, from selected\r\nID in Strict mode",
-								"autoAssignAllFromIDStrict", this, true);
-				this.resolveScreenAutoAssignFromIDStrict.setTooltipContent(GuiApiHelper
-						.makeTextArea(
-								"This will flag a mod to automatically assign an ID starting from the selected ID, but will show the conflict menu if there's a collision along the way.",
-								false));
-				this.subscreenIDSetter.add(this.resolveScreenAutoAssignFromIDStrict);
-
-				((WidgetSinglecolumn) this.subscreenIDSetter).heightOverrideExceptions
-						.put(this.resolveScreenAutoAssignFromIDStrict, 40);
-				
-				this.resolveScreenAutoAssignFromIDStrict.setEnabled(false);
-				
-				*/
 				
 				
 				if (IDResolver.getModPriority(IDResolver
@@ -3944,11 +3643,6 @@ public class IDResolver {
 				}
 				this.resolveScreenContinue.setEnabled(false);
 			}
-			//TODO: Enable this
-			/*
-			this.resolveScreenAutoAssignFromID.setEnabled(this.resolveScreenContinue.isEnabled());
-			this.resolveScreenAutoAssignFromIDStrict.setEnabled(this.resolveScreenContinue.isEnabled());
-			*/
 		} else {
 			GuiApiHelper.setTextAreaText(this.resolveScreenLabel,
 					"This is the currently saved ID.");

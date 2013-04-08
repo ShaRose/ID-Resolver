@@ -2,7 +2,6 @@ package sharose.mods.idresolver;
 
 import java.util.Map;
 
-import cpw.mods.fml.relauncher.FMLRelaunchLog;
 import cpw.mods.fml.relauncher.FMLRelauncher;
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 
@@ -10,6 +9,7 @@ import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
  * @author ShaRose
  * The core plugin. Just tells FML to use the patcher class.
  */
+@IFMLLoadingPlugin.MCVersion("1.5.1")
 public class IDResolverCorePlugin implements IFMLLoadingPlugin {
 
 	public static boolean isServer;
@@ -18,7 +18,6 @@ public class IDResolverCorePlugin implements IFMLLoadingPlugin {
 		isServer = FMLRelauncher.side().equals("SERVER");
 	}
 
-	
 	@Override
 	public String[] getLibraryRequestClass() {
 		return null;
@@ -26,11 +25,6 @@ public class IDResolverCorePlugin implements IFMLLoadingPlugin {
 
 	@Override
 	public String[] getASMTransformerClass() {
-		if(isServer)
-		{
-			FMLRelaunchLog.warning("ID Resolver has detected that it is in a server environment: Skipping load.");
-			return null;
-		}
 		return new String[]{"sharose.mods.idresolver.Patcher.IDResolverPatcher"};
 	}
 
