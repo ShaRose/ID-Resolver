@@ -2,20 +2,20 @@ package sharose.mods.idresolver;
 
 import java.util.Map;
 
-import cpw.mods.fml.relauncher.FMLRelauncher;
+import cpw.mods.fml.relauncher.FMLLaunchHandler;
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 
 /**
  * @author ShaRose
  * The core plugin. Just tells FML to use the patcher class.
  */
-@IFMLLoadingPlugin.MCVersion("1.5.1")
+@IFMLLoadingPlugin.MCVersion("1.6.2")
 public class IDResolverCorePlugin implements IFMLLoadingPlugin {
 
 	public static boolean isServer;
 	static
 	{
-		isServer = FMLRelauncher.side().equals("SERVER");
+		isServer = FMLLaunchHandler.side().equals("SERVER");
 	}
 
 	@Override

@@ -85,7 +85,7 @@ public class IDResolverMod implements ITickHandler {
 				continue;
 			IDResolverMod.totalFreeBlocks++;
 		}
-		for (int i = Item.shovelSteel.itemID; i < Item.itemsList.length; i++) {
+		for (int i = Item.shovelIron.itemID; i < Item.itemsList.length; i++) {
 			if(i < Block.blocksList.length)
 			{
 				if (Block.blocksList[i] != null)
