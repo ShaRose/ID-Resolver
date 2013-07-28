@@ -3,8 +3,8 @@
   "modid": "IDResolverMod",
   "name": "ID Resolver",
   "description": "Utility designed to make BlockID and ItemID conflicts easy to find and resolve, without crashing!",
-  "version": "1.5.1.0",
-  "mcversion": "1.5.1",
+  "version": "1.6.2.0",
+  "mcversion": "1.6.2",
   "url": "http://www.minecraftforum.net/topic/366377-IDResolver/",
   "updateUrl": "http://www.minecraftforum.net/topic/366377-IDResolver/",
   "authors": ["ShaRose"]

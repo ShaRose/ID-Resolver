@@ -6,6 +6,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.launchwrapper.IClassTransformer;
 
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
@@ -14,7 +15,6 @@ import sharose.mods.idresolver.IDResolverBasic;
 
 
 import cpw.mods.fml.common.asm.transformers.deobf.FMLDeobfuscatingRemapper;
-import cpw.mods.fml.relauncher.IClassTransformer;
 
 public class IDResolverPatcher implements IClassTransformer, Opcodes {
 

@@ -146,7 +146,7 @@ public class IDResolver extends IDResolverBasic {
 		IDResolver.logger = Logger.getLogger("IDResolver");
 		try {
 			FileHandler logHandler = new FileHandler(new File(
-					Minecraft.getMinecraftDir(), "IDResolver.txt").getPath());
+					Minecraft.getMinecraft().mcDataDir, "IDResolver.txt").getPath());
 			logHandler.setFormatter(new SimpleFormatter());
 			IDResolver.logger.addHandler(logHandler);
 			IDResolver.logger.setLevel(Level.ALL);
@@ -217,7 +217,7 @@ public class IDResolver extends IDResolverBasic {
 		}
 		try {
 			builder.append(String.format("\r\nDamage versus entities: %s",
-					item.getDamageVsEntity(null)));
+					item.getDamageVsEntity(null, null)));
 		} catch (Throwable e) {
 			builder.append("\r\nDamage versus entities: Error");
 		}
@@ -756,7 +756,7 @@ public class IDResolver extends IDResolverBasic {
 		report.append("Generated on " + new Date().toString())
 				.append(linebreak).append(linebreak);
 
-		boolean checkClean = Block.blocksList.length != Item.shovelSteel.itemID;
+		boolean checkClean = Block.blocksList.length != Item.shovelIron.itemID;
 		int totalRegisteredBlocks = 1;
 		int totalUncleanBlockSlots = 0;
 		int totalRegisteredItems = 0;
@@ -876,7 +876,7 @@ public class IDResolver extends IDResolverBasic {
 		report.append(
 				String.format("Item ID Status: %d/%d used. %d available.",
 						totalRegisteredItems, Item.itemsList.length,
-						(Item.itemsList.length - Item.shovelSteel.itemID)
+						(Item.itemsList.length - Item.shovelIron.itemID)
 								- totalRegisteredItems)).append(linebreak)
 				.append(linebreak);
 		report.append(
@@ -1188,7 +1188,7 @@ public class IDResolver extends IDResolverBasic {
 		{
 			start = lastOpenItemCache;
 		}
-		for (int i = start; i >= Item.shovelSteel.itemID; i--) {
+		for (int i = start; i >= Item.shovelIron.itemID; i--) {
 			if (!IDResolver.isSlotFree(i)) {
 				continue;
 			}
@@ -1249,7 +1249,7 @@ public class IDResolver extends IDResolverBasic {
 		if (i >= Block.blocksList.length) {
 			position = 2;
 		} else {
-			if (i >= Item.shovelSteel.itemID) {
+			if (i >= Item.shovelIron.itemID) {
 				position = 1;
 			}
 		}
@@ -1553,13 +1553,13 @@ public class IDResolver extends IDResolverBasic {
 		IDResolver.modPriorities = new Properties();
 		boolean forceSave = false;
 		try {
-			IDResolver.idPath = new File(Minecraft.getMinecraftDir()
+			IDResolver.idPath = new File(Minecraft.getMinecraft().mcDataDir
 					.getAbsolutePath()
 					+ "/config/IDResolverknownIDs.properties");
 
 			IDResolver.idPath.getParentFile().mkdirs();
 
-			IDResolver.priorityPath = new File(Minecraft.getMinecraftDir()
+			IDResolver.priorityPath = new File(Minecraft.getMinecraft().mcDataDir
 					.getAbsolutePath()
 					+ "/config/IDResolvermodPriorities.properties");
 			IDResolver.priorityPath.getParentFile().mkdirs();
@@ -2063,7 +2063,7 @@ public class IDResolver extends IDResolverBasic {
 				Level.INFO,
 				"User pressed 'SaveIDStatusToFile' button. Mode: "
 						+ showFree.toString());
-		File savePath = new File(new File(Minecraft.getMinecraftDir(),
+		File savePath = new File(new File(Minecraft.getMinecraft().mcDataDir,
 				fileName).getAbsolutePath().replace("\\.\\", "\\"));
 		try {
 			FileOutputStream output = new FileOutputStream(savePath);
@@ -2218,8 +2218,8 @@ public class IDResolver extends IDResolverBasic {
 
 	private static void syncMinecraftScreen(Minecraft mc,
 			GuiWidgetScreen widgetscreen) {
-		mc.displayWidth = mc.mcCanvas.getWidth();
-		mc.displayHeight = mc.mcCanvas.getHeight();
+		mc.displayWidth = Display.getWidth();
+		mc.displayHeight = Display.getHeight();
 		widgetscreen.layout();
 		RenderScale.scale = widgetscreen.screenSize.getScaleFactor();
 		GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
@@ -3073,8 +3073,7 @@ public class IDResolver extends IDResolverBasic {
 			boolean wasRunning = this.mc.running;
 			while (this.running) {
 
-				if (((this.mc.displayWidth != this.mc.mcCanvas.getWidth()) || (this.mc.displayHeight != this.mc.mcCanvas
-						.getHeight()))) {
+				if (((this.mc.displayWidth != Display.getWidth()) || (this.mc.displayHeight != Display.getHeight()))) {
 					IDResolver.syncMinecraftScreen(this.mc, this.widgetscreen);
 				}
 				this.widgetscreen.gui.update();
@@ -3224,8 +3223,8 @@ public class IDResolver extends IDResolverBasic {
 			}
 			this.widgetscreen.layout();
 			while (this.running) {
-				if ((this.mc.displayWidth != this.mc.mcCanvas.getWidth())
-						|| (this.mc.displayHeight != this.mc.mcCanvas.getHeight())) {
+				if ((this.mc.displayWidth != Display.getWidth())
+						|| (this.mc.displayHeight != Display.getHeight())) {
 					syncMinecraftScreen(this.mc, this.widgetscreen);
 				}
 				modscreen.drawScreen(0, 0, 0);
@@ -3390,7 +3389,7 @@ public class IDResolver extends IDResolverBasic {
 					.put(area, 0);
 			this.settingIntNewID = new SettingInt("New ID", RequestedID,
 					(this.isBlock || this.specialItem ? 1
-							: Item.shovelSteel.itemID), 1, getMaxID());
+							: Item.shovelIron.itemID), 1, getMaxID());
 			this.settingIntNewID.defaultValue = RequestedID;
 			WidgetInt intdisplay = new WidgetInt(this.settingIntNewID, "New ID");
 			this.subscreenIDSetter.add(intdisplay);
